@@ -5,6 +5,6 @@ package config
 
 const (
 	ProjectName        = "ctl_device"
-	ProjectVersion     = "v0.0.1"
+	ProjectVersion     = "v0.0.2"
 	ProjectDescription = "ctl_device"
 )

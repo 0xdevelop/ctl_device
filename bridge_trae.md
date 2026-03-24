@@ -9,32 +9,43 @@
 
 ## 当前任务
 
-### 任务编号: 01
-### 任务名称: 项目初始化
+### 任务编号: 03
+### 任务名称: 状态持久化层
 ### 状态: 🟢 待执行
 ### 描述:
 
-参考 `plan/tasks/01-project-init.md` 完整实现。
+参考 `plan/tasks/03-state-store.md` 完整实现。
 
 核心要点：
-1. 创建完整目录结构（cmd/、internal/、pkg/）
-2. 所有包能 go build 通过（空实现占位符）
-3. cobra CLI 框架：server / client 子命令
-4. go.mod 添加 cobra 依赖（`go get github.com/spf13/cobra`）
-5. 保留现有 config/config.go 不动
+1. internal/project/store.go：JSON 文件持久化，原子写（tmp+rename），flock 并发保护
+2. internal/project/scheduler.go：Dispatch/Advance/UpdateTaskStatus/CompleteTask/BlockTask
+3. Snapshot 机制：Server 重启后状态完整恢复
+4. 超时看门狗 goroutine（60s 检查）
+5. 单元测试：并发写、重启恢复、超时触发
 
 ### 验收标准:
-1. `go build ./...` 无报错
-2. `go vet ./...` 无报错
-3. `./ctl_device --help` 显示帮助
-4. `./ctl_device server --help` 显示帮助
-5. `./ctl_device client --help` 显示帮助
-6. `go test ./...` 通过
+1. go test ./internal/project/... 通过
+2. 并发写入不丢数据（5 goroutine）
+3. 写一半崩溃后，加载到上一个完整版本
+4. go test -race ./... 无报警
 
 ## 回报
 
-_(Trae CN 在此写执行结果)_
+### 任务 01 - 项目初始化: ✅ 已完成
+- 创建完整目录结构（cmd/、internal/、pkg/）
+- cobra CLI：server / client 子命令
+- 所有包空实现骨架
+- go build ./... 通过
+
+### 任务 02 - 协议类型定义: ✅ 已完成
+- pkg/protocol/task.go：TaskStatus + Task struct
+- pkg/protocol/agent.go：AgentRole + Agent struct
+- pkg/protocol/project.go：Project struct
+- pkg/protocol/mcp_tools.go：9 个 MCP tool schema
+- pkg/protocol/jsonrpc.go：Request/Response/Error struct
+- go test ./pkg/protocol/... 通过
 
 ## 历史
 
-_(已完成任务归档)_
+### 任务 01 - 项目初始化: ✅ (cobra CLI + 目录骨架)
+### 任务 02 - 协议类型定义: ✅ (MCP tool schema + 数据结构)

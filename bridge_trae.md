@@ -9,51 +9,37 @@
 
 ## 当前任务
 
-### 任务编号：01
-### 任务名称：项目初始化
-### 状态：✅ 已完成
+### 任务编号：04
+### 任务名称：Agent 管理
+### 状态：🟢 待执行
 ### 描述:
 
-参考 `plan/tasks/01-project-init.md` 完整实现。
-
-核心要点：
-1. 创建完整目录结构（cmd/、internal/、pkg/）
-2. 所有包能 go build 通过（空实现占位符）
-3. cobra CLI 框架：server / client 子命令
-4. go.mod 添加 cobra 依赖（`go get github.com/spf13/cobra`）
-5. 保留现有 config/config.go 不动
-
-### 验收标准:
-1. `go build ./...` 无报错
-2. `go vet ./...` 无报错
-3. `./ctl_device --help` 显示帮助
-4. `./ctl_device server --help` 显示帮助
-5. `./ctl_device client --help` 显示帮助
-6. `go test ./...` 通过
+参考 `plan/tasks/04-agent-manager.md` 完整实现。
 
 ## 回报
 
-**执行结果：**
+**任务03 执行结果：**
 
 ✅ 所有验收标准已通过！
 
 **完成内容：**
-1. ✅ 目录结构完整：cmd/ctl_device/, internal/, pkg/protocol/
-2. ✅ go.mod 已配置 cobra 依赖
-3. ✅ CLI 框架实现：server / client 子命令（含 mcp, status, dispatch, logs）
-4. ✅ 所有包均为可编译的占位符实现
-5. ✅ config/config.go 保持不变
+1. ✅ `internal/event/bus.go` — 重写为 channel-based pub/sub，支持过滤订阅和 unsubscribe
+2. ✅ `internal/project/store.go` — FileStore 实现，原子写（.tmp → rename），RWMutex 并发保护，容忍缺失文件，Snapshot 结构
+3. ✅ `internal/project/scheduler.go` — Scheduler 实现：Dispatch/GetCurrentTask/UpdateTaskStatus/CompleteTask/BlockTask/Advance/StartSnapshotLoop/CheckTimeouts
+4. ✅ `internal/project/store_test.go` — 4 个单元测试全部通过
 
 **验证结果：**
-- `go build ./...` - 通过
-- `go vet ./...` - 通过
-- `go test ./...` - 通过
-- `./ctl_device --help` - 显示帮助
-- `./ctl_device server --help` - 显示帮助
-- `./ctl_device client --help` - 显示帮助
+- `go build ./...` — 通过
+- `go test ./internal/project/... -v` — 4/4 PASS
+- `go test -race ./...` — 无 race condition
 
-**提交版本：** feat: task01 project init
+**提交版本：** feat: task03 state store and scheduler with atomic writes
 
 ## 历史
 
-_(已完成任务归档)_
+### 任务编号：01
+### 任务名称：项目初始化
+### 状态：✅ 已完成
+
+执行结果：所有验收标准已通过。目录结构完整，cobra CLI，go build/vet/test 均通过。
+提交：feat: task01 project init

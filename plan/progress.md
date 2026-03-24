@@ -6,7 +6,7 @@
 |------|------|------|--------|
 | 01 | 项目初始化 | ✅ 已完成 | - |
 | 02 | 协议类型定义 | ✅ 已完成 | - |
-| 03 | 状态持久化层 | 🟢 待执行 | - |
+| 03 | 状态持久化层 | ✅ 已完成 | feat: task03 state store and scheduler with atomic writes |
 | 04 | Agent 管理 | 🟢 待执行 | - |
 | 05 | JSON-RPC Server | 🟢 待执行 | - |
 | 06 | MCP Server | 🟢 待执行 | - |

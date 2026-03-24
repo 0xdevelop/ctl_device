@@ -1,33 +1,75 @@
 package event
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
-// Handler is a function that handles an event payload.
-type Handler func(payload interface{})
+// EventType identifies the kind of event.
+type EventType string
 
-// Bus is a simple in-process pub/sub event bus.
+const (
+	EventTaskStatusChanged EventType = "task_status_changed"
+	EventTaskCompleted     EventType = "task_completed"
+	EventTaskBlocked       EventType = "task_blocked"
+)
+
+// Event is a message published on the Bus.
+type Event struct {
+	Type    EventType   `json:"type"`
+	Project string      `json:"project,omitempty"`
+	Payload interface{} `json:"payload"`
+	At      time.Time   `json:"at"`
+}
+
+// Bus is a simple in-process pub/sub event bus backed by channels.
 type Bus struct {
-	mu       sync.RWMutex
-	handlers map[string][]Handler
+	mu   sync.RWMutex
+	subs map[chan Event][]EventType
 }
 
-// NewBus creates a new event Bus.
+// NewBus creates a new Bus.
 func NewBus() *Bus {
-	return &Bus{handlers: make(map[string][]Handler)}
+	return &Bus{subs: make(map[chan Event][]EventType)}
 }
 
-// Subscribe registers a handler for the given event type (stub).
-func (b *Bus) Subscribe(eventType string, h Handler) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.handlers[eventType] = append(b.handlers[eventType], h)
-}
-
-// Publish sends an event to all subscribers (stub).
-func (b *Bus) Publish(eventType string, payload interface{}) {
+// Publish sends e to all subscribers whose filter matches (empty filter = all events).
+func (b *Bus) Publish(e Event) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	for _, h := range b.handlers[eventType] {
-		go h(payload)
+	for ch, filters := range b.subs {
+		if matchesFilter(e.Type, filters) {
+			select {
+			case ch <- e:
+			default: // drop if subscriber is slow
+			}
+		}
 	}
+}
+
+// Subscribe returns a read-only channel and an unsubscribe function.
+// Pass event types to filter; pass nothing to receive all events.
+func (b *Bus) Subscribe(filters ...EventType) (ch <-chan Event, unsubscribe func()) {
+	c := make(chan Event, 64)
+	b.mu.Lock()
+	b.subs[c] = filters
+	b.mu.Unlock()
+	return c, func() {
+		b.mu.Lock()
+		delete(b.subs, c)
+		b.mu.Unlock()
+		close(c)
+	}
+}
+
+func matchesFilter(t EventType, filters []EventType) bool {
+	if len(filters) == 0 {
+		return true
+	}
+	for _, f := range filters {
+		if f == t {
+			return true
+		}
+	}
+	return false
 }

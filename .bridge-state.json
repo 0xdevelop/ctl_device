@@ -1,9 +1,9 @@
 {
-  "task_num": "06",
-  "task_name": "mcp-server",
+  "task_num": "07",
+  "task_name": "recovery",
   "status": "🟢 待执行",
   "started_at": "",
-  "updated_at": "2026-03-25T04:46:00+00:00",
+  "updated_at": "2026-03-25T17:33:00+00:00",
   "commit": "",
   "timeout_minutes": 120,
   "total_tasks": 10

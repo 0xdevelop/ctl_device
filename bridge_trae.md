@@ -9,50 +9,38 @@
 
 ## 当前任务
 
-### 任务编号：04
-### 任务名称：agent-manager
-### 状态：✅ 已完成
+### 任务编号: 05
+### 任务名称: JSON-RPC Server
+### 状态: 🟢 待执行
 ### 描述:
 
-参考 `plan/tasks/04-*.md` 完整实现。完成后：
-- 状态改为 ✅ 已完成，在 ## 回报 写结果
-- git add -A && git commit -m "feat: task04 agent-manager"
-- git push yerikokay main
+参考 `plan/tasks/05-jsonrpc-server.md` 完整实现。
+
+核心要点：
+1. `internal/server/jsonrpc.go` — HTTP server 监听 :3711，路由 POST /rpc
+2. token 认证中间件（空 token = 跳过认证）
+3. 实现所有 RPC 方法：task.get/status/complete/block，agent.register/heartbeat/list，project.register/list，task.dispatch/advance，event.subscribe
+4. GET /events — SSE 事件流
+5. `internal/client/jsonrpc_client.go` — Go 客户端封装
+6. CLI 命令绑定：`ctl_device client status/dispatch/logs`
+7. httptest 集成测试
 
 ### 验收标准:
-1. `go test ./internal/agent/...` 通过
-2. `go test ./internal/event/...` 通过
-3. 测试覆盖：
-   - 注册 → 心跳 → 超时 → 标记离线 → 事件触发
-   - 断线重连 → 返回待恢复任务
-   - 多 executor 同时注册，FindExecutorForProject 路由正确
-   - EventBus：发布事件，多个订阅者都收到；取消订阅后不再收到
-4. 并发安全（race detector 无报警）：`go test -race ./...`
+1. `go test ./internal/server/... -v` 通过
+2. `go test -race ./...` 无报警
+3. `ctl_device server` 启动后 curl POST /rpc 能返回 JSON
+4. `ctl_device client status` 能输出结果
 
 ## 回报
 
-### 任务 04 - Agent 管理：✅ 已完成
-- EventBus：新增 EventAgentOnline/EventAgentOffline/EventProjectRegistered 事件类型
-- EventBus：Subscribe 方法支持传入 channel 和事件过滤，返回 unsubscribe 函数
-- Registry：实现 Agent 配置持久化（Save/Load/LoadAll/Delete），原子写（tmp+rename）
-- Manager：实现 Agent 注册、心跳、超时检测（45 秒）、离线标记、事件发布
-- Manager：FindExecutorForProject 支持按项目指定 executor 或 capabilities 匹配
-- Manager：断线重连支持（resume=true 返回待恢复任务）
-- 测试：14 个测试全部通过（TestBus_* 5 个，TestManager_* 9 个，TestRegistry_* 5 个）
-- go test -race 无报警
-
-## 历史
-
-### 任务 03 - 状态持久化层：✅ 已完成
-- FileStore：原子写（tmp+rename）、sync.RWMutex、目录自动创建
-- Scheduler：Dispatch/GetCurrentTask/UpdateTaskStatus/CompleteTask/BlockTask/Advance
-- StartSnapshotLoop：定时快照
-- CheckTimeouts：超时任务重置为 pending
-- 测试全部通过（TestSaveLoadProject/TestAtomicWrite/TestSnapshotRoundtrip/TestSchedulerCompleteTask）
-- go test -race 无报警
-
-## 历史
-
 ### 任务 01 - 项目初始化: ✅
 ### 任务 02 - 协议类型定义: ✅
-### 任务 03 - 状态持久化层: ✅ (commit 4af78f1)
+### 任务 03 - 状态持久化: ✅ (原子写+快照+超时检测，race通过)
+### 任务 04 - Agent管理: ✅ (心跳检测+断线恢复+EventBus，race通过)
+
+## 历史
+
+task01: cobra CLI + 目录骨架
+task02: MCP tool schema + 数据结构
+task03: FileStore原子写、Snapshot恢复、Scheduler、超时看门狗
+task04: AgentManager心跳/断线重连、EventBus发布订阅

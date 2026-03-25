@@ -36,7 +36,7 @@ func (s *Scheduler) Dispatch(projectName string, task *protocol.Task) error {
 		Type:    event.EventTaskStatusChanged,
 		Project: projectName,
 		Payload: task,
-		At:      time.Now(),
+		Timestamp: time.Now(),
 	})
 	return nil
 }
@@ -83,7 +83,7 @@ func (s *Scheduler) UpdateTaskStatus(projectName, taskNum string, status protoco
 		Type:    event.EventTaskStatusChanged,
 		Project: projectName,
 		Payload: t,
-		At:      time.Now(),
+		Timestamp: time.Now(),
 	})
 	return nil
 }
@@ -110,7 +110,7 @@ func (s *Scheduler) CompleteTask(projectName, taskNum string, commit, report str
 		Type:    event.EventTaskCompleted,
 		Project: projectName,
 		Payload: t,
-		At:      time.Now(),
+		Timestamp: time.Now(),
 	})
 	return nil
 }
@@ -136,7 +136,7 @@ func (s *Scheduler) BlockTask(projectName, taskNum string, reason string) error 
 		Type:    event.EventTaskBlocked,
 		Project: projectName,
 		Payload: t,
-		At:      time.Now(),
+		Timestamp: time.Now(),
 	})
 	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/0xdevelop/ctl_device/internal/event"
 	"github.com/0xdevelop/ctl_device/internal/project"
 	"github.com/0xdevelop/ctl_device/internal/server"
+	"github.com/0xdevelop/ctl_device/pkg/protocol"
 )
 
 func main() {
@@ -54,14 +56,19 @@ func main() {
 		Long:  "Client commands to interact with a running ctl_device server.",
 	}
 
+	var mcpServer string
+	var mcpToken string
+
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
-		Short: "Start MCP stdio client",
+		Short: "Start MCP stdio client (proxy to remote JSON-RPC server)",
+		Long:  "Start MCP stdio client that proxies MCP requests to a remote JSON-RPC server.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(os.Stderr, "mcp client not yet implemented")
-			return nil
+			return runMCPClient(mcpServer, mcpToken)
 		},
 	}
+	mcpCmd.Flags().StringVarP(&mcpServer, "server", "s", "http://localhost:3711", "Remote JSON-RPC server URL")
+	mcpCmd.Flags().StringVarP(&mcpToken, "token", "t", "", "Authentication token")
 
 	statusCmd := &cobra.Command{
 		Use:   "status",
@@ -257,4 +264,299 @@ func runLogs(serverURL, token, projectFilter string, follow bool) error {
 			return fmt.Errorf("event stream error: %w", err)
 		}
 	}
+}
+
+func runMCPClient(serverURL, token string) error {
+	c := client.NewClient(serverURL, token, "")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		var mcpReq map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &mcpReq); err != nil {
+			sendMCPError(nil, -32700, "Parse error: "+err.Error())
+			continue
+		}
+
+		if mcpReq["jsonrpc"] != "2.0" {
+			sendMCPError(mcpReq["id"], -32600, "Invalid Request")
+			continue
+		}
+
+		method, _ := mcpReq["method"].(string)
+		params := mcpReq["params"]
+
+		result, err := handleMCPMethod(method, params, c)
+		if err != nil {
+			sendMCPError(mcpReq["id"], -32000, err.Error())
+			continue
+		}
+
+		sendMCPResponse(mcpReq["id"], result)
+	}
+
+	return scanner.Err()
+}
+
+func handleMCPMethod(method string, params interface{}, c *client.Client) (interface{}, error) {
+	switch method {
+	case "initialize":
+		return map[string]interface{}{
+			"protocolVersion": "2024-11-05",
+			"capabilities": map[string]interface{}{
+				"tools": map[string]interface{}{},
+			},
+			"serverInfo": map[string]interface{}{
+				"name":    "ctl_device",
+				"version": "0.1.0",
+			},
+		}, nil
+
+	case "notifications/initialized":
+		return nil, nil
+
+	case "tools/list":
+		tools := []map[string]interface{}{
+			toolToMap(protocol.ToolTaskGet),
+			toolToMap(protocol.ToolTaskComplete),
+			toolToMap(protocol.ToolTaskBlock),
+			toolToMap(protocol.ToolTaskStatus),
+			toolToMap(protocol.ToolProjectRegister),
+			toolToMap(protocol.ToolProjectList),
+			toolToMap(protocol.ToolTaskDispatch),
+			toolToMap(protocol.ToolTaskAdvance),
+			toolToMap(protocol.ToolAgentList),
+		}
+		return map[string]interface{}{
+			"tools": tools,
+		}, nil
+
+	case "tools/call":
+		paramsMap, ok := params.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid params")
+		}
+
+		name, _ := paramsMap["name"].(string)
+		arguments, _ := paramsMap["arguments"].(map[string]interface{})
+
+		return handleToolCall(name, arguments, c)
+
+	default:
+		return nil, fmt.Errorf("method not found: %s", method)
+	}
+}
+
+func toolToMap(tool protocol.MCPToolSchema) map[string]interface{} {
+	return map[string]interface{}{
+		"name":        tool.Name,
+		"description": tool.Description,
+		"inputSchema": tool.InputSchema,
+	}
+}
+
+func handleToolCall(name string, args map[string]interface{}, c *client.Client) (interface{}, error) {
+	switch name {
+	case "task_get":
+		projectName, _ := args["project"].(string)
+		if projectName == "" {
+			return nil, fmt.Errorf("missing project")
+		}
+
+		resp, err := c.TaskGet(projectName)
+		if err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": fmt.Sprintf(`{"status": "%s", "task": %v}`, resp.Status, resp.Task),
+				},
+			},
+		}, nil
+
+	case "task_complete":
+		projectName, _ := args["project"].(string)
+		taskNum, _ := args["task_num"].(string)
+		summary, _ := args["summary"].(string)
+		commit, _ := args["commit"].(string)
+		testOutput, _ := args["test_output"].(string)
+		issues, _ := args["issues"].(string)
+
+		report := &client.CompleteReport{
+			Project:    projectName,
+			TaskNum:    taskNum,
+			Summary:    summary,
+			Commit:     commit,
+			TestOutput: testOutput,
+			Issues:     issues,
+		}
+
+		if err := c.TaskComplete(report); err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": `{"status": "ok"}`},
+			},
+		}, nil
+
+	case "task_block":
+		projectName, _ := args["project"].(string)
+		taskNum, _ := args["task_num"].(string)
+		reason, _ := args["reason"].(string)
+		details, _ := args["details"].(string)
+
+		report := &client.BlockReport{
+			Project: projectName,
+			TaskNum: taskNum,
+			Reason:  reason,
+			Details: details,
+		}
+
+		if err := c.TaskBlock(report); err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": `{"status": "ok"}`},
+			},
+		}, nil
+
+	case "task_status":
+		projectName, _ := args["project"].(string)
+		taskNum, _ := args["task_num"].(string)
+		status, _ := args["status"].(string)
+
+		if err := c.TaskStatus(projectName, taskNum, status); err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": `{"status": "ok"}`},
+			},
+		}, nil
+
+	case "project_register":
+		req := &client.ProjectRegisterRequest{
+			Name:           getString(args, "name"),
+			Dir:            getString(args, "dir"),
+			Tech:           getString(args, "tech"),
+			TestCmd:        getString(args, "test_cmd"),
+			Executor:       getString(args, "executor"),
+			TimeoutMinutes: getInt(args, "timeout_minutes"),
+			NotifyChannel:  getString(args, "notify_channel"),
+			NotifyTarget:   getString(args, "notify_target"),
+		}
+
+		if err := c.ProjectRegister(req); err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": `{"status": "ok"}`},
+			},
+		}, nil
+
+	case "project_list":
+		resp, err := c.ProjectList()
+		if err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": fmt.Sprintf(`{"projects": %v, "tasks": %v}`, resp.Projects, resp.Tasks)},
+			},
+		}, nil
+
+	case "task_dispatch":
+		projectName, _ := args["project"].(string)
+		task, _ := args["task"].(map[string]interface{})
+
+		if err := c.TaskDispatch(projectName, task); err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": `{"status": "ok"}`},
+			},
+		}, nil
+
+	case "task_advance":
+		projectName, _ := args["project"].(string)
+
+		if err := c.TaskAdvance(projectName); err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": `{"status": "ok"}`},
+			},
+		}, nil
+
+	case "agent_list":
+		resp, err := c.AgentList()
+		if err != nil {
+			return nil, err
+		}
+
+		return map[string]interface{}{
+			"content": []map[string]interface{}{
+				{"type": "text", "text": fmt.Sprintf(`{"agents": %v}`, resp.Agents)},
+			},
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unknown tool: %s", name)
+	}
+}
+
+func getString(args map[string]interface{}, key string) string {
+	if v, ok := args[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func getInt(args map[string]interface{}, key string) int {
+	if v, ok := args[key].(int); ok {
+		return v
+	}
+	return 0
+}
+
+func sendMCPResponse(id interface{}, result interface{}) {
+	resp := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"result":  result,
+	}
+	data, _ := json.Marshal(resp)
+	fmt.Fprintf(os.Stdout, "%s\n", data)
+}
+
+func sendMCPError(id interface{}, code int, message string) {
+	resp := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      id,
+		"error": map[string]interface{}{
+			"code":    code,
+			"message": message,
+		},
+	}
+	data, _ := json.Marshal(resp)
+	fmt.Fprintf(os.Stdout, "%s\n", data)
 }

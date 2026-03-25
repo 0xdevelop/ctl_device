@@ -1,0 +1,10 @@
+{
+  "task_num": "06",
+  "task_name": "mcp-server",
+  "status": "🟢 待执行",
+  "started_at": "",
+  "updated_at": "2026-03-25T04:46:00+00:00",
+  "commit": "",
+  "timeout_minutes": 120,
+  "total_tasks": 10
+}

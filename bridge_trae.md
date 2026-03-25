@@ -9,40 +9,32 @@
 
 ## 当前任务
 
-### 任务编号：05
-### 任务名称：JSON-RPC Server
-### 状态：✅ 已完成
+### 任务编号: 06
+### 任务名称: MCP Server（SSE + stdio）
+### 状态: 🟢 待执行
 ### 描述:
 
-参考 `plan/tasks/05-jsonrpc-server.md` 完整实现。
+参考 `plan/tasks/06-mcp-server.md` 完整实现。
 
 核心要点：
-1. `internal/server/jsonrpc.go` — HTTP server 监听 :3711，路由 POST /rpc
-2. token 认证中间件（空 token = 跳过认证）
-3. 实现所有 RPC 方法：task.get/status/complete/block，agent.register/heartbeat/list，project.register/list，task.dispatch/advance，event.subscribe
-4. GET /events — SSE 事件流
-5. `internal/client/jsonrpc_client.go` — Go 客户端封装
-6. CLI 命令绑定：`ctl_device client status/dispatch/logs`
-7. httptest 集成测试
+1. `internal/server/mcp_stdio.go` — MCP stdio transport，从 stdin 读 JSON-RPC，向 stdout 写响应
+2. `internal/server/mcp_sse.go` — MCP SSE server 监听 :3710（GET /sse + POST /message）
+3. MCP 握手：处理 initialize / tools/list / tools/call
+4. `pkg/protocol/mcp_tools.go` — 完整实现所有 9 个 tool 的 schema（task_get/task_complete/task_block/task_status/project_register/project_list/task_dispatch/task_advance/agent_list）
+5. `ctl_device client mcp` — stdio 模式代理到远程 JSON-RPC server
+6. 单元测试：MCP 握手、tools/list、tools/call
 
 ### 验收标准:
-1. `go test ./internal/server/... -v` 通过
-2. `go test -race ./...` 无报警
-3. `ctl_device server` 启动后 curl POST /rpc 能返回 JSON
-4. `ctl_device client status` 能输出结果
+1. `go test ./internal/server/... -v` 通过（含 MCP 握手测试）
+2. `go build ./...` 无报错
+3. `go test -race ./...` 无报警
+4. stdio 模式：发 initialize → 收到 serverInfo；发 tools/list → 收到所有工具
 
 ## 回报
 
-### 任务 01 - 项目初始化：✅
-### 任务 02 - 协议类型定义：✅
-### 任务 03 - 状态持久化：✅ (原子写 + 快照 + 超时检测，race 通过)
-### 任务 04 - Agent 管理：✅ (心跳检测 + 断线恢复+EventBus，race 通过)
-### 任务 05 - JSON-RPC Server: ✅ (HTTP Server :3711, 所有 RPC 方法，SSE 事件流，Go 客户端，CLI 命令，测试通过)
+### 已完成：01✅ 02✅ 03✅ 04✅ 05✅
 
 ## 历史
-
-task01: cobra CLI + 目录骨架
-task02: MCP tool schema + 数据结构
-task03: FileStore原子写、Snapshot恢复、Scheduler、超时看门狗
-task04: AgentManager心跳/断线重连、EventBus发布订阅
-task05: JSON-RPC HTTP Server + Go 客户端 + CLI 命令 + 集成测试
+task01: cobra CLI骨架 | task02: 协议类型定义
+task03: 状态持久化原子写+快照 | task04: Agent心跳+EventBus
+task05: JSON-RPC Server+SSE事件流+CLI client

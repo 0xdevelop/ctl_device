@@ -9,9 +9,9 @@
 
 ## 当前任务
 
-### 任务编号: 05
-### 任务名称: JSON-RPC Server
-### 状态: 🟢 待执行
+### 任务编号：05
+### 任务名称：JSON-RPC Server
+### 状态：✅ 已完成
 ### 描述:
 
 参考 `plan/tasks/05-jsonrpc-server.md` 完整实现。
@@ -33,10 +33,11 @@
 
 ## 回报
 
-### 任务 01 - 项目初始化: ✅
-### 任务 02 - 协议类型定义: ✅
-### 任务 03 - 状态持久化: ✅ (原子写+快照+超时检测，race通过)
-### 任务 04 - Agent管理: ✅ (心跳检测+断线恢复+EventBus，race通过)
+### 任务 01 - 项目初始化：✅
+### 任务 02 - 协议类型定义：✅
+### 任务 03 - 状态持久化：✅ (原子写 + 快照 + 超时检测，race 通过)
+### 任务 04 - Agent 管理：✅ (心跳检测 + 断线恢复+EventBus，race 通过)
+### 任务 05 - JSON-RPC Server: ✅ (HTTP Server :3711, 所有 RPC 方法，SSE 事件流，Go 客户端，CLI 命令，测试通过)
 
 ## 历史
 
@@ -44,3 +45,4 @@ task01: cobra CLI + 目录骨架
 task02: MCP tool schema + 数据结构
 task03: FileStore原子写、Snapshot恢复、Scheduler、超时看门狗
 task04: AgentManager心跳/断线重连、EventBus发布订阅
+task05: JSON-RPC HTTP Server + Go 客户端 + CLI 命令 + 集成测试

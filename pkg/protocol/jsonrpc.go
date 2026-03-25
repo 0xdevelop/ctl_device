@@ -1,5 +1,7 @@
 package protocol
 
+import "fmt"
+
 // Request is a JSON-RPC 2.0 request.
 type Request struct {
 	JSONRPC string      `json:"jsonrpc"`
@@ -26,4 +28,9 @@ type AuthToken struct {
 type RPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+// Error implements the error interface for RPCError.
+func (e RPCError) Error() string {
+	return fmt.Sprintf("RPC error %d: %s", e.Code, e.Message)
 }

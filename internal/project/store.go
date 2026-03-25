@@ -53,6 +53,11 @@ func NewFileStore(dir string) (*FileStore, error) {
 	return &FileStore{dir: dir}, nil
 }
 
+// Dir returns the state directory.
+func (fs *FileStore) Dir() string {
+	return fs.dir
+}
+
 // --- helpers ---
 
 // atomicWrite marshals v to JSON and writes it atomically via a .tmp rename.

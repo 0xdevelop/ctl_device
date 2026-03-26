@@ -15,6 +15,7 @@ import (
 	"github.com/0xdevelop/ctl_device/internal/event"
 	"github.com/0xdevelop/ctl_device/internal/project"
 	"github.com/0xdevelop/ctl_device/pkg/protocol"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // JSON-RPC error codes
@@ -40,6 +41,11 @@ type Server struct {
 	cancel      context.CancelFunc
 	sseSubs     map[chan EventSubscription]*sseSubscription
 	sseMu       sync.RWMutex
+	tlsEnabled  bool
+	certFile    string
+	keyFile     string
+	autoTLS     bool
+	domain      string
 }
 
 type sseSubscription struct {
@@ -69,6 +75,11 @@ func NewServer(addr string, token string, manager *agent.Manager, scheduler *pro
 		ctx:       ctx,
 		cancel:    cancel,
 		sseSubs:   make(map[chan EventSubscription]*sseSubscription),
+		tlsEnabled: false,
+		certFile:  "",
+		keyFile:   "",
+		autoTLS:   false,
+		domain:    "",
 	}
 
 	s.mux = http.NewServeMux()
@@ -84,7 +95,29 @@ func (s *Server) Start() error {
 		Addr:    s.addr,
 		Handler: s.authMiddleware(s.mux),
 	}
+	
+	if s.tlsEnabled && s.autoTLS && s.domain != "" {
+		return s.startAutoTLS(server)
+	}
+	
+	if s.tlsEnabled && s.certFile != "" && s.keyFile != "" {
+		return server.ListenAndServeTLS(s.certFile, s.keyFile)
+	}
+	
 	return server.ListenAndServe()
+}
+
+// startAutoTLS starts the server with automatic TLS using Let's Encrypt.
+func (s *Server) startAutoTLS(server *http.Server) error {
+	certManager := autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		HostPolicy: autocert.HostWhitelist(s.domain),
+		Cache:      autocert.DirCache("~/.config/ctl_device/certs"),
+	}
+	
+	server.TLSConfig = certManager.TLSConfig()
+	
+	return server.ListenAndServeTLS("", "")
 }
 
 // Shutdown gracefully shuts down the server.
@@ -95,6 +128,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		Handler: s.mux,
 	}
 	return server.Shutdown(ctx)
+}
+
+// SetTLSConfig configures TLS settings for the server.
+func (s *Server) SetTLSConfig(enabled bool, certFile, keyFile string, autoTLS bool, domain string) {
+	s.tlsEnabled = enabled
+	s.certFile = certFile
+	s.keyFile = keyFile
+	s.autoTLS = autoTLS
+	s.domain = domain
 }
 
 // authMiddleware handles token authentication.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/0xdevelop/ctl_device/config"
 	"github.com/0xdevelop/ctl_device/internal/agent"
 	"github.com/0xdevelop/ctl_device/internal/client"
 	"github.com/0xdevelop/ctl_device/internal/event"
@@ -31,18 +32,21 @@ func main() {
 	var addr string
 	var token string
 	var stateDir string
+	var configFile string
 
 	serverCmd := &cobra.Command{
 		Use:   "server",
 		Short: "Start the coordination server",
 		Long:  "Start the ctl_device coordination server (JSON-RPC HTTP server).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(addr, token, stateDir)
+			return runServer(addr, token, stateDir, configFile)
 		},
 	}
 	serverCmd.Flags().StringVarP(&addr, "addr", "a", ":3711", "Server address")
 	serverCmd.Flags().StringVarP(&token, "token", "t", "", "Authentication token (optional)")
 	serverCmd.Flags().StringVarP(&stateDir, "state-dir", "s", "", "State directory")
+	serverCmd.Flags().StringVarP(&configFile, "config", "c", "", "Config file path")
+	serverCmd.Flags().StringVarP(&configFile, "config", "c", "", "Config file path")
 
 	var serverURL string
 	var agentID string
@@ -117,8 +121,46 @@ func main() {
 	}
 }
 
-func runServer(addr, token, stateDir string) error {
-	store, err := project.NewFileStore(stateDir)
+func runServer(addr, token, stateDir, configFile string) error {
+	var cfg *config.ServerConfig
+	var err error
+
+	// Priority: CLI > env > config > default
+	// 1. Load from config file or default
+	if configFile != "" {
+		cfg, err = config.LoadServerConfig(configFile)
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+	} else {
+		cfg = config.DefaultServerConfig()
+	}
+
+	// 2. Override with environment variables
+	if envToken := os.Getenv("CTL_DEVICE_TOKEN"); envToken != "" {
+		cfg.Server.Token = envToken
+	}
+	if envAddr := os.Getenv("CTL_DEVICE_ADDR"); envAddr != "" {
+		cfg.Server.Bind = envAddr
+	}
+	if envStateDir := os.Getenv("CTL_DEVICE_STATE_DIR"); envStateDir != "" {
+		cfg.Server.StateDir = envStateDir
+	}
+
+	// 3. Override with CLI arguments (highest priority)
+	if token != "" {
+		cfg.Server.Token = token
+	}
+
+	if addr != ":3711" {
+		cfg.Server.Bind = addr
+	}
+
+	if stateDir != "" {
+		cfg.Server.StateDir = stateDir
+	}
+
+	store, err := project.NewFileStore(cfg.Server.StateDir)
 	if err != nil {
 		return fmt.Errorf("failed to create file store: %w", err)
 	}
@@ -127,7 +169,7 @@ func runServer(addr, token, stateDir string) error {
 
 	scheduler := project.NewScheduler(store, eventBus)
 
-	registry, err := agent.NewRegistry(stateDir)
+	registry, err := agent.NewRegistry(cfg.Server.StateDir)
 	if err != nil {
 		return fmt.Errorf("failed to create agent registry: %w", err)
 	}
@@ -136,7 +178,14 @@ func runServer(addr, token, stateDir string) error {
 		return fmt.Errorf("failed to create agent manager: %w", err)
 	}
 
-	jsonrpcServer, err := server.NewServer(addr, token, manager, scheduler, store, eventBus)
+	jsonrpcServer, err := server.NewServer(
+		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.JSONRPCPort),
+		cfg.Server.Token,
+		manager,
+		scheduler,
+		store,
+		eventBus,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create JSON-RPC server: %w", err)
 	}
@@ -146,7 +195,8 @@ func runServer(addr, token, stateDir string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	scheduler.StartSnapshotLoop(ctx, 5*time.Minute)
+	snapshotInterval := time.Duration(cfg.Server.SnapshotIntervalSecs) * time.Second
+	scheduler.StartSnapshotLoop(ctx, snapshotInterval)
 	scheduler.CheckTimeouts(ctx, func(msg string) {
 		fmt.Fprintf(os.Stderr, "TIMEOUT: %s\n", msg)
 	})
@@ -164,8 +214,8 @@ func runServer(addr, token, stateDir string) error {
 		jsonrpcServer.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Printf("Starting ctl_device server on %s\n", addr)
-	if token != "" {
+	fmt.Printf("Starting ctl_device server on %s:%d\n", cfg.Server.Bind, cfg.Server.JSONRPCPort)
+	if cfg.Server.Token != "" {
 		fmt.Printf("Token authentication enabled\n")
 	}
 	fmt.Printf("State directory: %s\n", store.Dir())

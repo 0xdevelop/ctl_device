@@ -1,11 +1,11 @@
 package agent
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/0xdevelop/ctl_device/internal/fileutil"
 	"github.com/0xdevelop/ctl_device/pkg/protocol"
 )
 
@@ -40,7 +40,7 @@ func NewRegistry(dir string) (*Registry, error) {
 func (r *Registry) Save(agent *protocol.Agent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return atomicWrite(filepath.Join(r.dir, agent.ID+".json"), agent)
+	return fileutil.AtomicWrite(filepath.Join(r.dir, agent.ID+".json"), agent)
 }
 
 // Load loads an agent configuration from disk.
@@ -48,7 +48,7 @@ func (r *Registry) Load(agentID string) (*protocol.Agent, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var a protocol.Agent
-	if err := readJSON(filepath.Join(r.dir, agentID+".json"), &a); err != nil {
+	if err := fileutil.ReadJSON(filepath.Join(r.dir, agentID+".json"), &a); err != nil {
 		return nil, err
 	}
 	if a.ID == "" {
@@ -74,7 +74,7 @@ func (r *Registry) LoadAll() ([]*protocol.Agent, error) {
 			continue
 		}
 		var a protocol.Agent
-		if err := readJSON(filepath.Join(r.dir, e.Name()), &a); err != nil {
+		if err := fileutil.ReadJSON(filepath.Join(r.dir, e.Name()), &a); err != nil {
 			return nil, err
 		}
 		if a.ID != "" {
@@ -95,31 +95,4 @@ func (r *Registry) Delete(agentID string) error {
 	return nil
 }
 
-// atomicWrite marshals v to JSON and writes it atomically via a .tmp rename.
-func atomicWrite(path string, v interface{}) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
 
-// readJSON reads and unmarshals JSON from path.
-// If the file does not exist it returns nil error and leaves v unchanged.
-func readJSON(path string, v interface{}) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	return json.Unmarshal(data, v)
-}

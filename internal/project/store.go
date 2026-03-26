@@ -1,12 +1,12 @@
 package project
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/0xdevelop/ctl_device/internal/fileutil"
 	"github.com/0xdevelop/ctl_device/pkg/protocol"
 )
 
@@ -60,48 +60,21 @@ func (fs *FileStore) Dir() string {
 
 // --- helpers ---
 
-// atomicWrite marshals v to JSON and writes it atomically via a .tmp rename.
-func atomicWrite(path string, v interface{}) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
 
-// readJSON reads and unmarshals JSON from path.
-// If the file does not exist it returns nil error and leaves v unchanged.
-func readJSON(path string, v interface{}) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	return json.Unmarshal(data, v)
-}
 
 // --- Project ---
 
 func (fs *FileStore) SaveProject(p *protocol.Project) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	return atomicWrite(filepath.Join(fs.dir, "projects", p.Name+".json"), p)
+	return fileutil.AtomicWrite(filepath.Join(fs.dir, "projects", p.Name+".json"), p)
 }
 
 func (fs *FileStore) LoadProject(name string) (*protocol.Project, error) {
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
 	var p protocol.Project
-	if err := readJSON(filepath.Join(fs.dir, "projects", name+".json"), &p); err != nil {
+	if err := fileutil.ReadJSON(filepath.Join(fs.dir, "projects", name+".json"), &p); err != nil {
 		return nil, err
 	}
 	if p.Name == "" {
@@ -126,7 +99,7 @@ func (fs *FileStore) ListProjects() ([]*protocol.Project, error) {
 			continue
 		}
 		var p protocol.Project
-		if err := readJSON(filepath.Join(fs.dir, "projects", e.Name()), &p); err != nil {
+		if err := fileutil.ReadJSON(filepath.Join(fs.dir, "projects", e.Name()), &p); err != nil {
 			return nil, err
 		}
 		if p.Name != "" {
@@ -151,14 +124,14 @@ func (fs *FileStore) DeleteProject(name string) error {
 func (fs *FileStore) SaveTask(t *protocol.Task) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	return atomicWrite(filepath.Join(fs.dir, "tasks", t.Project, t.Num+".json"), t)
+	return fileutil.AtomicWrite(filepath.Join(fs.dir, "tasks", t.Project, t.Num+".json"), t)
 }
 
 func (fs *FileStore) LoadTask(projectName, taskNum string) (*protocol.Task, error) {
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
 	var t protocol.Task
-	if err := readJSON(filepath.Join(fs.dir, "tasks", projectName, taskNum+".json"), &t); err != nil {
+	if err := fileutil.ReadJSON(filepath.Join(fs.dir, "tasks", projectName, taskNum+".json"), &t); err != nil {
 		return nil, err
 	}
 	if t.Num == "" {
@@ -184,7 +157,7 @@ func (fs *FileStore) ListTasks(projectName string) ([]*protocol.Task, error) {
 			continue
 		}
 		var t protocol.Task
-		if err := readJSON(filepath.Join(dir, e.Name()), &t); err != nil {
+		if err := fileutil.ReadJSON(filepath.Join(dir, e.Name()), &t); err != nil {
 			return nil, err
 		}
 		if t.Num != "" {
@@ -209,14 +182,14 @@ func (fs *FileStore) DeleteTask(projectName, taskNum string) error {
 func (fs *FileStore) SaveSnapshot(s *Snapshot) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	return atomicWrite(filepath.Join(fs.dir, "state.json"), s)
+	return fileutil.AtomicWrite(filepath.Join(fs.dir, "state.json"), s)
 }
 
 func (fs *FileStore) LoadSnapshot() (*Snapshot, error) {
 	fs.mu.RLock()
 	defer fs.mu.RUnlock()
 	var s Snapshot
-	if err := readJSON(filepath.Join(fs.dir, "state.json"), &s); err != nil {
+	if err := fileutil.ReadJSON(filepath.Join(fs.dir, "state.json"), &s); err != nil {
 		return nil, err
 	}
 	if s.Version == "" {

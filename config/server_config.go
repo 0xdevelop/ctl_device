@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -128,8 +127,11 @@ func LoadServerConfig(path string) (*ServerConfig, error) {
 	return config, nil
 }
 
+
+
+// ExpandTilde expands a leading "~/" in path to the user's home directory.
 func ExpandTilde(path string) string {
-	if strings.HasPrefix(path, "~/") {
+	if len(path) >= 2 && path[:2] == "~/" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return path
@@ -137,14 +139,4 @@ func ExpandTilde(path string) string {
 		return filepath.Join(homeDir, path[2:])
 	}
 	return path
-}
-
-func GetGitCommit(projectDir string) (string, error) {
-	cmd := exec.Command("git", "rev-parse", "HEAD")
-	cmd.Dir = projectDir
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get git commit: %w", err)
-	}
-	return strings.TrimSpace(string(output)), nil
 }

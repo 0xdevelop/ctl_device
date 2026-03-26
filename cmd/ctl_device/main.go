@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"os/signal"
 	"syscall"
 	"time"
@@ -135,15 +136,36 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 	var cfg *config.ServerConfig
 	var err error
 
-	// Priority: CLI > env > config > default
-	// 1. Load from config file or default
-	if configFile != "" {
-		cfg, err = config.LoadServerConfig(configFile)
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
+	// Priority: CLI flag > env > beside-binary conf/config.yaml > default (auto-generate)
+	// 1. Resolve config file path
+	resolvedConfig := configFile
+	if resolvedConfig == "" {
+		// Look beside the binary at conf/config.yaml
+		execPath, execErr := os.Executable()
+		if execErr == nil {
+			candidate := filepath.Join(filepath.Dir(execPath), "conf", "config.yaml")
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				resolvedConfig = candidate
+			}
 		}
+	}
+
+	if resolvedConfig != "" {
+		cfg, err = config.LoadServerConfig(resolvedConfig)
+		if err != nil {
+			return fmt.Errorf("failed to load config %s: %w", resolvedConfig, err)
+		}
+		fmt.Printf("Config loaded from: %s\n", resolvedConfig)
 	} else {
+		// No config found: generate default at conf/config.yaml beside the binary
 		cfg = config.DefaultServerConfig()
+		execPath, execErr := os.Executable()
+		if execErr == nil {
+			defaultPath := filepath.Join(filepath.Dir(execPath), "conf", "config.yaml")
+			if writeErr := config.WriteDefaultConfig(defaultPath); writeErr == nil {
+				fmt.Printf("Default config generated: %s\n", defaultPath)
+			}
+		}
 	}
 
 	// 2. Override with environment variables

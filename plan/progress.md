@@ -10,7 +10,7 @@
 | 04 | Agent 管理 | ✅ 已完成 | feat: task04 agent-manager |
 | 05 | JSON-RPC Server | ✅ 已完成 | - |
 | 06 | MCP Server | ✅ 已完成 | feat: task06 mcp-server |
-| 07 | 容灾恢复 | 🟢 待执行 | - |
+| 07 | 容灾恢复 | ✅ 已完成 | - |
 | 08 | 认证 + 配置 | 🟢 待执行 | - |
 | 09 | Web Dashboard | 🟢 待执行 | - |
 | 10 | 集成测试 + CI/CD | 🟢 待执行 | - |

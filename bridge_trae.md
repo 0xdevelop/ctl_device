@@ -9,35 +9,33 @@
 
 ## 当前任务
 
-### 任务编号: 07
-### 任务名称: 容灾恢复系统
+### 任务编号: 08
+### 任务名称: 认证 + 配置文件
 ### 状态: 🟢 待执行
 ### 描述:
 
-参考 `plan/tasks/07-recovery.md` 完整实现。
+参考 `plan/tasks/08-auth-config.md` 完整实现。
 
 核心要点：
-1. `internal/recovery/recovery.go` — Manager，订阅所有 agent/task 事件，驱动恢复逻辑
-2. 场景1：执行者断线重连 → OnAgentReconnect，找回持有任务继续
-3. 场景2：Server 重启 → OnServerStart，从 snapshot 恢复，通知在线 executor
-4. 场景3：调度者重连 → OnSchedulerReconnect，返回期间所有状态变更摘要
-5. 场景4：token 限制 → HandleExecutorLimit，任务标记 executor_limit，幂等恢复
-6. 场景5：超时自动重置 → CheckTimeouts，超时→通知→30min→重置pending
-7. 场景6：Git push 失败 → commit_pending 状态，幂等重试
-8. `internal/notify/notify.go` — 完整实现：openclaw-weixin/telegram/webhook/none 多渠道
-9. 集成测试：模拟断线重连、server重启、超时重置、幂等调用
+1. `internal/auth/auth.go` — token 认证中间件（Header Bearer 或 JSON body auth.token，空 token 跳过）
+2. TLS 配置结构（enabled/cert_file/key_file/auto_tls/domain）
+3. `config/server_config.go` — YAML 配置加载，ServerConfig struct（server/notify/projects 三段）
+4. `~/.config/ctl_device/client.yaml` 客户端配置
+5. CLI flag 优先级：flags > 环境变量（CTL_DEVICE_SERVER/TOKEN/AGENT_ID）> 配置文件 > 默认值
+6. `go get gopkg.in/yaml.v3` 作为 YAML 解析依赖
+7. 单元测试：token 验证、YAML 加载、flag 覆盖配置文件
 
 ### 验收标准:
-1. `go test ./internal/recovery/... -v` 通过
-2. `go test -race ./...` 无报警
-3. `go build ./...` 无报错
-4. 断线重连测试：任务正确恢复，不丢不重
+1. `go test ./internal/auth/... -v` 通过
+2. `go test ./config/... -v` 通过
+3. `go test -race ./...` 无报警
+4. `ctl_device server --config bridge.yaml` 正常启动
+5. `ctl_device server --token mytoken` 覆盖配置文件
 
 ## 回报
 
-### 已完成：01✅ 02✅ 03✅ 04✅ 05✅ 06✅
+### 已完成：01✅ 02✅ 03✅ 04✅ 05✅ 06✅ 07✅
 
 ## 历史
-task01~04: 骨架+协议+持久化+Agent心跳
-task05: JSON-RPC Server+SSE
-task06: MCP Server stdio+SSE，tools/list/call，MCP握手
+task01~06: 骨架/协议/持久化/Agent/JSON-RPC/MCP
+task07: 容灾恢复6场景（断线/重启/调度者重连/token限制/超时/push失败），race通过

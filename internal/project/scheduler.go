@@ -17,6 +17,11 @@ type Scheduler struct {
 	mu       sync.Mutex
 }
 
+// GetStore returns the underlying FileStore.
+func (s *Scheduler) GetStore() *FileStore {
+	return s.store
+}
+
 // NewScheduler creates a Scheduler backed by store and bus.
 func NewScheduler(store *FileStore, bus *event.Bus) *Scheduler {
 	return &Scheduler{store: store, eventBus: bus}

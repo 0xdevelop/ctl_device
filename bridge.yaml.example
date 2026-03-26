@@ -1,0 +1,30 @@
+# bridge.yaml - ctl_device server configuration example
+
+server:
+  mcp_port: 3710
+  jsonrpc_port: 3711
+  dashboard_port: 3712
+  bind: "0.0.0.0"
+  token: "your-secret-token"
+  tls:
+    enabled: false
+    cert_file: ""
+    key_file: ""
+    auto_tls: false
+    domain: ""
+  state_dir: "~/.config/ctl_device"
+  snapshot_interval_seconds: 30
+  heartbeat_timeout_seconds: 45
+
+notify:
+  channel: "none"
+  target: ""
+  webhook_url: ""
+
+projects:
+  - name: scrypt-wallet
+    dir: /home/ubuntu/workspace/scrypt-wallet
+    tech: go
+    test_cmd: "go test ./..."
+    executor: "any"
+    timeout_minutes: 120

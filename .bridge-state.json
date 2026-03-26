@@ -1,9 +1,9 @@
 {
-  "task_num": "09",
-  "task_name": "dashboard",
+  "task_num": "10",
+  "task_name": "integration-ci",
   "status": "🟢 待执行",
   "started_at": "",
-  "updated_at": "2026-03-26T05:05:00+00:00",
+  "updated_at": "2026-03-26T05:39:50+00:00",
   "commit": "",
   "timeout_minutes": 120,
   "total_tasks": 10

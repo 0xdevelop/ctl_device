@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"sync"
 	"net/http"
 	"time"
 
@@ -35,6 +36,7 @@ type Dashboard struct {
 	server    *http.Server
 	eventCh   chan event.Event
 	mu        chan struct{}
+	serverMu  sync.Mutex
 }
 
 func NewDashboard(addr string, manager *agent.Manager, scheduler *project.Scheduler, eventBus *event.Bus) *Dashboard {
@@ -46,6 +48,7 @@ func NewDashboard(addr string, manager *agent.Manager, scheduler *project.Schedu
 		startTime: time.Now(),
 		eventCh:   make(chan event.Event, 100),
 		mu:        make(chan struct{}, 1),
+
 	}
 }
 
@@ -62,10 +65,12 @@ func (d *Dashboard) Start() error {
 	mux.HandleFunc("/api/state", d.handleAPIState)
 	mux.HandleFunc("/stream", d.handleStream)
 
+	d.serverMu.Lock()
 	d.server = &http.Server{
 		Addr:    d.addr,
 		Handler: mux,
 	}
+	d.serverMu.Unlock()
 
 	go d.subscribeToEvents()
 
@@ -73,8 +78,11 @@ func (d *Dashboard) Start() error {
 }
 
 func (d *Dashboard) Shutdown(ctx context.Context) error {
-	if d.server != nil {
-		return d.server.Shutdown(ctx)
+	d.serverMu.Lock()
+	srv := d.server
+	d.serverMu.Unlock()
+	if srv != nil {
+		return srv.Shutdown(ctx)
 	}
 	return nil
 }

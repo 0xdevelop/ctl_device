@@ -780,6 +780,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		close(eventCh)
 	}()
 
+	// Send initial ping to flush headers immediately so client unblocks
+	fmt.Fprintf(w, ": ping\n\n")
+	flusher.Flush()
+
 	ctx := r.Context()
 	for {
 		select {

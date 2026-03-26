@@ -28,19 +28,60 @@ jobs:
         with:
           go-version: '>=1.22.0'
 
-      - name: do testing
+      - name: Run tests with race detector
         shell: bash
         run: |
-          go test -v -run ./...
+          go test -race -timeout 5m ./...
+
+  Build:
+    runs-on: ${{ matrix.os }}
+    needs: Testing
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest,   GOOS: linux,   GOARCH: amd64
+          - os: ubuntu-latest,   GOOS: linux,   GOARCH: arm64
+          - os: windows-latest,  GOOS: windows, GOARCH: amd64
+          - os: macos-latest,    GOOS: darwin,  GOARCH: amd64
+          - os: macos-latest,    GOOS: darwin,  GOARCH: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '>=1.22.0'
+
+      - name: Get latest tag
+        run: |
+          echo "LATEST_TAG=$(git tag | grep -v '^latest$' | sort -V | tail -n1)" >> $GITHUB_ENV
+
+      - name: Build binary
+        shell: bash
+        run: |
+          go build -ldflags="-X main.Version=${{ env.LATEST_TAG }}" -o ctl_device_${{ matrix.GOOS }}_${{ matrix.GOARCH }} ./cmd/ctl_device
+
+      - name: Upload binary to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctl_device_${{ matrix.GOOS }}_${{ matrix.GOARCH }}
+          path: ctl_device_${{ matrix.GOOS }}_${{ matrix.GOARCH }}
 
   Release:
     runs-on: ubuntu-latest
-    needs: Testing
+    needs: [Testing, Build]
     outputs:
       UPLOAD_URL: ${{ steps.stepCreateRelease.outputs.upload_url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
 
       - name: Get latest tag
         run: |
@@ -54,6 +95,14 @@ jobs:
           custom_tag: ${{ env.LATEST_TAG }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate SHA256 checksums
+        run: |
+          cd ./artifacts
+          for f in ctl_device_*; do
+            sha256sum "$f" > "${f}.sha256"
+          done
+          cd ..
+
       - name: Step GitHub release
         id: stepCreateRelease
         uses: ncipollo/release-action@v1
@@ -61,6 +110,7 @@ jobs:
           skipIfReleaseExists: 'true'
           tag: ${{ env.LATEST_TAG }}
           name: ${{ env.LATEST_TAG }}
+          artifacts: ./artifacts/*
 
   RemoveOldRelease:
     runs-on: ubuntu-latest

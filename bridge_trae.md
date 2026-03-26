@@ -8,27 +8,13 @@
 
 ## 当前任务
 
-### 任务编号: 09
-### 任务名称: Web Dashboard
-### 状态: ✅ 已完成
+### 任务编号: 10
+### 任务名称: integration-ci
+### 状态: 🟢 待执行
 ### 描述:
 
-参考 `plan/tasks/09-dashboard.md` 完整实现。
-
-核心要点：
-1. `internal/server/dashboard.go` — Web Dashboard，监听 :3712
-2. `//go:embed static/*` 内嵌静态文件，二进制独立运行
-3. `GET /` — HTML 主页（深色主题，纯 HTML+CSS+JS，无框架）
-4. `GET /api/state` — 返回当前状态 JSON（前端 5s 轮询）
-5. `GET /stream` — SSE 实时事件推送到前端
-6. `internal/server/static/` 目录：index.html + style.css + app.js
-7. 展示：在线 Agent 列表、项目状态、最近 10 条事件
-
-### 验收标准:
-1. `go build ./...` 无报错（静态文件正确 embed）
-2. `ctl_device server` 启动后浏览器访问 :3712 能看到 dashboard
-3. `/api/state` 返回正确 JSON
-4. `/stream` SSE 连接正常
+参考 `plan/tasks/10-integration-ci.md` 完整实现。
+完成后：状态改为 ✅ 已完成，写回报，然后 git add -A && git commit && git push yerikokay main
 
 ## 回报
 

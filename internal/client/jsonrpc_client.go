@@ -1,12 +1,14 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/0xdevelop/ctl_device/pkg/protocol"
@@ -14,10 +16,11 @@ import (
 
 // Client is a JSON-RPC client for interacting with ctl_device server.
 type Client struct {
-	ServerURL string
-	Token     string
-	AgentID   string
-	client    *http.Client
+	ServerURL  string
+	Token      string
+	AgentID    string
+	client     *http.Client
+	sseClient  *http.Client // no timeout, for SSE long-lived connections
 }
 
 // NewClient creates a new JSON-RPC client.
@@ -28,6 +31,9 @@ func NewClient(serverURL, token, agentID string) *Client {
 		AgentID:   agentID,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
+		},
+		sseClient: &http.Client{
+			Timeout: 0, // no timeout for SSE
 		},
 	}
 }
@@ -301,23 +307,28 @@ func (c *Client) SubscribeEvents(project string) (<-chan SSEEvent, <-chan error,
 		httpReq.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 
-	resp, err := c.client.Do(httpReq)
+	resp, err := c.sseClient.Do(httpReq)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	go func() {
 		defer resp.Body.Close()
-		decoder := json.NewDecoder(resp.Body)
-		for {
-			var event SSEEvent
-			if err := decoder.Decode(&event); err != nil {
-				if err != io.EOF {
-					errCh <- err
-				}
-				return
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue // skip SSE comments (": ping") and empty lines
 			}
-			eventCh <- event
+			data := strings.TrimPrefix(line, "data: ")
+			var evt SSEEvent
+			if err := json.Unmarshal([]byte(data), &evt); err != nil {
+				continue // skip malformed lines
+			}
+			eventCh <- evt
+		}
+		if err := scanner.Err(); err != nil && err != io.EOF {
+			errCh <- err
 		}
 	}()
 

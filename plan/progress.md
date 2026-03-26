@@ -12,7 +12,7 @@
 | 06 | MCP Server | ✅ 已完成 | feat: task06 mcp-server |
 | 07 | 容灾恢复 | ✅ 已完成 | - |
 | 08 | 认证 + 配置 | ✅ 已完成 | feat: task08 auth-config |
-| 09 | Web Dashboard | 🟢 待执行 | - |
+| 09 | Web Dashboard | 🟢 待执行  | - |
 | 10 | 集成测试 + CI/CD | 🟢 待执行 | - |
 
 ## 总估时: ~20 小时

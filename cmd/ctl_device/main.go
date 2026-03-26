@@ -17,6 +17,8 @@ import (
 	"github.com/0xdevelop/ctl_device/internal/agent"
 	"github.com/0xdevelop/ctl_device/internal/client"
 	"github.com/0xdevelop/ctl_device/internal/event"
+	"github.com/0xdevelop/ctl_device/internal/notify"
+	"github.com/0xdevelop/ctl_device/internal/recovery"
 	"github.com/0xdevelop/ctl_device/internal/project"
 	"github.com/0xdevelop/ctl_device/internal/server"
 	"github.com/0xdevelop/ctl_device/pkg/protocol"
@@ -206,6 +208,24 @@ func runServer(addr, token, stateDir, configFile string) error {
 
 	jsonrpcServer.SubscribeToEvents()
 
+	// Notifier
+	notifier := notify.NewNotifier(cfg.Notify.Channel, cfg.Notify.Target)
+
+	// Recovery Manager（断线/重启/token限制/超时恢复）
+	recoveryMgr := recovery.NewManager(scheduler, manager, notifier, eventBus)
+	if err := recoveryMgr.OnServerStart(); err != nil {
+		fmt.Fprintf(os.Stderr, "Recovery warning: %v\n", err)
+	}
+
+	// MCP SSE Server (:3710)
+	mcpSSEServer := server.NewMCPSSEServer(
+		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.MCPPort),
+		scheduler,
+		manager,
+		store,
+		eventBus,
+	)
+
 	dashboard := server.NewDashboard(
 		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.DashboardPort),
 		manager,
@@ -233,6 +253,7 @@ func runServer(addr, token, stateDir, configFile string) error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		jsonrpcServer.Shutdown(shutdownCtx)
+		mcpSSEServer.Shutdown(shutdownCtx)
 		dashboard.Shutdown(shutdownCtx)
 	}()
 
@@ -243,6 +264,14 @@ func runServer(addr, token, stateDir, configFile string) error {
 	fmt.Printf("Dashboard available at http://%s:%d\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 	fmt.Printf("State directory: %s\n", store.Dir())
 
+	fmt.Printf("MCP SSE server at http://%s:%d/sse\n", cfg.Server.Bind, cfg.Server.MCPPort)
+	recoveryMgr.Start(ctx)
+	go func() {
+		fmt.Fprintf(os.Stderr, "Starting MCP SSE on %s:%d...\n", cfg.Server.Bind, cfg.Server.MCPPort)
+		if err := mcpSSEServer.Start(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "MCP SSE failed: %v\n", err)
+		}
+	}()
 	go func() {
 		fmt.Fprintf(os.Stderr, "Starting dashboard on %s:%d...\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 		if err := dashboard.Start(); err != nil && err != http.ErrServerClosed {

@@ -31,7 +31,9 @@ func main() {
 		Long:  "ctl_device is a task coordination system for multi-agent workflows via MCP protocol.",
 	}
 
-	var addr string
+	var jsonrpcPort int
+	var mcpPort int
+	var dashboardPort int
 	var token string
 	var stateDir string
 	var configFile string
@@ -41,10 +43,12 @@ func main() {
 		Short: "Start the coordination server",
 		Long:  "Start the ctl_device coordination server (JSON-RPC HTTP server).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(addr, token, stateDir, configFile)
+			return runServer(jsonrpcPort, mcpPort, dashboardPort, token, stateDir, configFile)
 		},
 	}
-	serverCmd.Flags().StringVarP(&addr, "addr", "a", ":3711", "Server address")
+	serverCmd.Flags().IntVar(&jsonrpcPort, "jsonrpc-port", 0, "JSON-RPC server port (default 3711)")
+	serverCmd.Flags().IntVar(&mcpPort, "mcp-port", 0, "MCP SSE server port (default 3710)")
+	serverCmd.Flags().IntVar(&dashboardPort, "dashboard-port", 0, "Dashboard port (default 3712)")
 	serverCmd.Flags().StringVarP(&token, "token", "t", "", "Authentication token (optional)")
 	serverCmd.Flags().StringVarP(&stateDir, "state-dir", "s", "", "State directory")
 	serverCmd.Flags().StringVarP(&configFile, "config", "c", "", "Config file path")
@@ -127,7 +131,7 @@ func main() {
 	}
 }
 
-func runServer(addr, token, stateDir, configFile string) error {
+func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configFile string) error {
 	var cfg *config.ServerConfig
 	var err error
 
@@ -153,15 +157,19 @@ func runServer(addr, token, stateDir, configFile string) error {
 		cfg.Server.StateDir = envStateDir
 	}
 
-	// 3. Override with CLI arguments (highest priority)
+	// 3. Override with CLI arguments (highest priority, 0 = not set)
 	if token != "" {
 		cfg.Server.Token = token
 	}
-
-	if addr != ":3711" {
-		cfg.Server.Bind = addr
+	if jsonrpcPort != 0 {
+		cfg.Server.JSONRPCPort = jsonrpcPort
 	}
-
+	if mcpPort != 0 {
+		cfg.Server.MCPPort = mcpPort
+	}
+	if dashboardPort != 0 {
+		cfg.Server.DashboardPort = dashboardPort
+	}
 	if stateDir != "" {
 		cfg.Server.StateDir = stateDir
 	}

@@ -1,8 +1,10 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"testing"
@@ -16,7 +18,29 @@ import (
 )
 
 func findFreePort() int {
-	return 37000 + int(time.Now().Unix()%1000)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+
+func waitForServer(t *testing.T, url string) {
+	t.Helper()
+	// POST a ping request; any JSON response means server is up
+	pingBody := []byte(`{"jsonrpc":"2.0","id":0,"method":"bridge.agent.list","params":{}}`)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Post(url+"/rpc", "application/json", bytes.NewReader(pingBody))
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("server at %s not ready after 3s", url)
 }
 
 func setupTestServer(t *testing.T) (*server.Server, *agent.Manager, *project.Scheduler, *project.FileStore, string, func()) {
@@ -331,6 +355,7 @@ func TestServerRestart(t *testing.T) {
 	}()
 
 	serverURL := fmt.Sprintf("http://localhost:%d", jsonrpcPort)
+	waitForServer(t, serverURL)
 
 	c := client.NewClient(serverURL, "", "test-agent-3")
 
@@ -815,6 +840,7 @@ func TestTaskTimeout(t *testing.T) {
 	}()
 
 	serverURL := fmt.Sprintf("http://localhost:%d", jsonrpcPort)
+	waitForServer(t, serverURL)
 	c := client.NewClient(serverURL, "", "timeout-agent")
 
 	_, err = c.AgentRegister(&client.RegisterRequest{
@@ -894,6 +920,7 @@ func TestEventStreaming(t *testing.T) {
 		t.Fatalf("Failed to subscribe to events: %v", err)
 	}
 
+	var eventsReceivedMu sync.Mutex
 	eventsReceived := make([]event.Event, 0)
 	done := make(chan bool)
 
@@ -902,12 +929,14 @@ func TestEventStreaming(t *testing.T) {
 			select {
 			case evt := <-eventCh:
 				t.Logf("Received event: %s (project: %s)", evt.Type, evt.Project)
+				eventsReceivedMu.Lock()
 				eventsReceived = append(eventsReceived, event.Event{
 					Type:      event.EventType(evt.Type),
 					Project:   evt.Project,
 					AgentID:   evt.AgentID,
 					Timestamp: evt.Timestamp,
 				})
+				eventsReceivedMu.Unlock()
 			case err := <-errCh:
 				t.Errorf("Event stream error: %v", err)
 				return
@@ -971,10 +1000,13 @@ func TestEventStreaming(t *testing.T) {
 
 	close(done)
 
-	if len(eventsReceived) == 0 {
+	eventsReceivedMu.Lock()
+	count := len(eventsReceived)
+	eventsReceivedMu.Unlock()
+	if count == 0 {
 		t.Log("No events received (may be timing issue)")
 	} else {
-		t.Logf("Received %d events", len(eventsReceived))
+		t.Logf("Received %d events", count)
 	}
 
 	t.Log("Event streaming test completed")

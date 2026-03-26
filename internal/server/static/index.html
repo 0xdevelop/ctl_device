@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ctl_device Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <header class="header">
+            <div class="header-left">
+                <span class="logo">🦞</span>
+                <h1>ctl_device</h1>
+                <span class="version">v0.1.0</span>
+            </div>
+            <div class="header-right">
+                <span class="uptime" id="uptime">uptime: --</span>
+            </div>
+        </header>
+
+        <main class="main">
+            <section class="section agents-section">
+                <h2 class="section-title">
+                    Agents (<span id="agent-count">0</span> online / <span id="agent-offline-count">0</span> offline)
+                </h2>
+                <div class="agent-list" id="agent-list">
+                </div>
+            </section>
+
+            <section class="section projects-section">
+                <h2 class="section-title">Projects</h2>
+                <div class="project-list" id="project-list">
+                </div>
+            </section>
+
+            <section class="section events-section">
+                <h2 class="section-title">
+                    Recent Events
+                    <span class="live-indicator">(live)</span>
+                </h2>
+                <div class="event-list" id="event-list">
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <span>ctl_device Dashboard</span>
+            <span class="last-update">Last update: <span id="last-update">--</span></span>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

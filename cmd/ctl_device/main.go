@@ -206,6 +206,13 @@ func runServer(addr, token, stateDir, configFile string) error {
 
 	jsonrpcServer.SubscribeToEvents()
 
+	dashboard := server.NewDashboard(
+		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.DashboardPort),
+		manager,
+		scheduler,
+		eventBus,
+	)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -226,13 +233,22 @@ func runServer(addr, token, stateDir, configFile string) error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		jsonrpcServer.Shutdown(shutdownCtx)
+		dashboard.Shutdown(shutdownCtx)
 	}()
 
 	fmt.Printf("Starting ctl_device server on %s:%d\n", cfg.Server.Bind, cfg.Server.JSONRPCPort)
 	if cfg.Server.Token != "" {
 		fmt.Printf("Token authentication enabled\n")
 	}
+	fmt.Printf("Dashboard available at http://%s:%d\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 	fmt.Printf("State directory: %s\n", store.Dir())
+
+	go func() {
+		fmt.Fprintf(os.Stderr, "Starting dashboard on %s:%d...\n", cfg.Server.Bind, cfg.Server.DashboardPort)
+		if err := dashboard.Start(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "Dashboard failed: %v\n", err)
+		}
+	}()
 
 	if err := jsonrpcServer.Start(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("server failed: %w", err)

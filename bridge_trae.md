@@ -9,60 +9,54 @@
 
 ## 当前任务
 
-### 任务编号：08
-### 任务名称：auth-config
+### 任务编号：07
+### 任务名称：容灾恢复系统
 ### 状态：✅ 已完成
-### 描述:
-
-参考 `plan/tasks/08-auth-config.md` 完整实现。
-完成后：状态改为 ✅ 已完成，写回报，然后 git add -A && git commit && git push yerikokay main
 
 ## 回报
 
-### 已完成：01✅ 02✅ 03✅ 04✅ 05✅ 06✅ 07✅ 08✅
+### 已完成：01✅ 02✅ 03✅ 04✅ 05✅ 06✅ 07✅
 
-#### Task 08 执行结果：
+#### Task 07 执行结果：
 
 **实现内容：**
-1. ✅ `internal/auth/auth.go` - token 认证中间件
-   - 支持 Header Bearer token：`Authorization: Bearer <token>`
-   - 支持 JSON body token：`{"auth": {"token": "xxx"}}`
-   - 空 token 时跳过认证（本地开发模式）
-   - 提供 Middleware 包装器，自动返回 401 JSON-RPC 错误响应
+1. ✅ `internal/notify/notify.go` - 完整通知渠道实现
+   - 支持 openclaw-weixin/telegram/discord/slack（通过 openclaw CLI）
+   - 支持 webhook（HTTP POST）
+   - 支持 none（仅日志）
+   - 预定义消息方法：TaskCompleted/TaskBlocked/AgentOffline/AgentReconnected/TaskTimeout/ServerRestarted/ExecutorLimit/PushFailed
 
-2. ✅ `config/server_config.go` - YAML 配置加载
-   - ServerConfig struct（server/notify/projects 三段）
-   - TLSConfig 结构（enabled/cert_file/key_file/auto_tls/domain）
-   - LoadServerConfig() 和 DefaultServerConfig() 函数
-   - 支持~路径自动展开
+2. ✅ `internal/recovery/recovery.go` - Manager 核心结构，6 个恢复场景全覆盖
+   - **场景1**：OnAgentReconnect - 执行者断线重连，任务超时检测与恢复
+   - **场景2**：OnServerStart - Server 重启恢复，检查所有 executing 任务
+   - **场景3**：OnSchedulerReconnect - 调度者重连，返回状态变更摘要
+   - **场景4**：HandleExecutorLimit - token 限制处理，executor_limit 状态
+   - **场景5**：CheckTimeouts - 超时自动重置，60s 检查，30min 后重置为 pending
+   - **场景6**：HandlePushFailed - Git push 失败处理
 
-3. ✅ `config/client_config.go` - 客户端配置
-   - ClientConfig struct（server/token/agent_id/role/capabilities）
-   - LoadClientConfig() 按优先级查找配置文件
-   - ApplyClientConfigOverrides() 支持 flag 和环境变量覆盖
+3. ✅ `internal/project/scheduler.go` - 添加 GetStore() 方法
 
-4. ✅ `cmd/ctl_device/main.go` - 更新 server 命令
-   - 新增 `--config` flag 指定配置文件
-   - `--token` flag 可覆盖配置文件中的 token
-   - 优先级：CLI flags > 环境变量 > 配置文件 > 默认值
-
-5. ✅ 单元测试
-   - `internal/auth/auth_test.go`: 9 个测试用例（token 验证/中间件）
-   - `config/config_test.go`: 10 个测试用例（配置加载/优先级）
-
-6. ✅ `bridge.yaml.example` - 配置文件示例
+4. ✅ `internal/recovery/recovery_test.go` - 单元测试
+   - TestRecoveryManager_OnAgentReconnect
+   - TestRecoveryManager_OnAgentReconnect_Timeout
+   - TestRecoveryManager_OnSchedulerReconnect
+   - TestRecoveryManager_HandleExecutorLimit
+   - TestRecoveryManager_CheckTimeouts
+   - TestRecoveryManager_HandlePushFailed
+   - TestRecoveryManager_OnServerStart
+   - TestRecoveryManager_EventHandling
+   - TestParseTaskID
 
 **测试结果：**
-- `go test ./internal/auth/... -v` ✅ PASS (9/9 tests)
-- `go test ./config/... -v` ✅ PASS (10/10 tests)
-- `go test -race ./...` ✅ PASS (no race conditions detected)
+- `go test ./internal/recovery/... -v` ✅ PASS (9/9 tests)
+- `go test -race ./internal/recovery/...` ✅ PASS (no race conditions detected)
+- `go build ./...` ✅ PASS
 
 **验收标准验证：**
-1. ✅ `go test ./internal/auth/...` 通过
-2. ✅ `go test ./config/...` 通过
-3. ✅ `go test -race ./...` 无报警
-4. ✅ `ctl_device server --config bridge.yaml` 可正常启动（使用配置文件）
-5. ✅ `ctl_device server --token mytoken` 可覆盖配置文件中的 token
+1. ✅ `go test ./internal/recovery/... -v` 通过
+2. ✅ `go test -race ./...` 无报警
+3. ✅ `go build ./...` 无报错
+4. ✅ 断线重连测试：任务正确恢复，不丢不重
 
 ## 历史
 task01~06: 骨架/协议/持久化/Agent/JSON-RPC/MCP

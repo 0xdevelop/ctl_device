@@ -51,7 +51,10 @@ func (m *Manager) Start(ctx context.Context) {
 				return
 			case <-m.ctx.Done():
 				return
-			case evt := <-eventCh:
+			case evt, ok := <-eventCh:
+				if !ok {
+					return
+				}
 				m.handleEvent(evt)
 			}
 		}
@@ -90,41 +93,39 @@ func (m *Manager) OnAgentReconnect(agentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Find task assigned to this agent - check CurrentTask first, then scan all tasks
-	var task *protocol.Task
 	agent, ok := m.agentMgr.GetAgent(agentID)
-	if ok && agent.CurrentTask != "" {
-		projectName, taskNum := parseTaskID(agent.CurrentTask)
-		task, _ = m.scheduler.GetCurrentTask(projectName)
-		if task != nil && task.Num != taskNum {
-			task = nil
-		}
+	if !ok {
+		return fmt.Errorf("agent %s not found", agentID)
 	}
 
-	// Fall back: scan all projects for a task assigned to this agent
-	if task == nil {
-		projects, _ := m.listAllProjects()
-		for _, proj := range projects {
-			tasks, _ := m.listTasksForProject(proj.Name)
-			for _, t := range tasks {
-				if t.AssignedTo == agentID && (t.Status == protocol.TaskExecuting) {
-					task = t
-					break
-				}
-			}
-			if task != nil {
+	if agent.CurrentTask == "" {
+		return nil
+	}
+
+	taskID := agent.CurrentTask
+	projectName, taskNum := parseTaskID(taskID)
+
+	task, err := m.scheduler.GetCurrentTask(projectName)
+	if err != nil {
+		return err
+	}
+
+	if task == nil || task.Num != taskNum {
+		tasks, err := m.listTasksForProject(projectName)
+		if err != nil {
+			return err
+		}
+		for _, t := range tasks {
+			if t.Num == taskNum && t.AssignedTo == agentID {
+				task = t
 				break
 			}
 		}
 	}
 
 	if task == nil {
-		return nil // no task to recover
+		return fmt.Errorf("task %s not found", taskID)
 	}
-
-	projectName := task.Project
-	taskNum := task.Num
-	taskID := task.ID
 
 	timeoutMinutes := task.TimeoutMinutes
 	if timeoutMinutes == 0 {

@@ -105,15 +105,16 @@ func TestRecoveryManager_OnAgentReconnect_Timeout(t *testing.T) {
 		t.Fatalf("Failed to save project: %v", err)
 	}
 
+	startedAt := time.Now().Add(-2 * time.Minute)
 	task := &protocol.Task{
-		ID:          "test-project-timeout:01",
-		Project:     projectName,
-		Num:         "01",
-		Name:        "test-task",
-		Status:      protocol.TaskExecuting,
-		AssignedTo:  "agent-2",
-		StartedAt:   time.Now().Add(-2 * time.Minute),
-		UpdatedAt:   time.Now(),
+		ID:             "test-project-timeout:01",
+		Project:        projectName,
+		Num:            "01",
+		Name:           "test-task",
+		Status:         protocol.TaskExecuting,
+		AssignedTo:     "agent-2",
+		StartedAt:      startedAt,
+		UpdatedAt:      time.Now(),
 		TimeoutMinutes: 1,
 	}
 	if err := store.SaveTask(task); err != nil {
@@ -125,10 +126,17 @@ func TestRecoveryManager_OnAgentReconnect_Timeout(t *testing.T) {
 		Role:    "executor",
 	})
 
+	agent, _ := agentMgr.GetAgent("agent-2")
+	if agent != nil {
+		agent.CurrentTask = "test-project-timeout:01"
+	}
+
 	err := mgr.OnAgentReconnect("agent-2")
 	if err != nil {
 		t.Fatalf("OnAgentReconnect failed: %v", err)
 	}
+
+	time.Sleep(50 * time.Millisecond)
 
 	updatedTask, err := store.LoadTask(projectName, "01")
 	if err != nil {

@@ -3,4 +3,8 @@
 .vscode/
 ./config/config.go-e
 logs/
+<<<<<<< HEAD
+ctl_device
+=======
 /ctl_device
+>>>>>>> 402bf769ecead9997f2c0631b923b19a30abe650

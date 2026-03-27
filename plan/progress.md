@@ -12,12 +12,17 @@
 | 06 | MCP Server | ✅ 已完成 | feat: task06 mcp-server |
 | 07 | 容灾恢复 | ✅ 已完成 | - |
 | 08 | 认证 + 配置 | ✅ 已完成 | feat: task08 auth-config |
-| 09 | Web Dashboard | 🟢 待执行  | - |
-| 10 | 集成测试 + CI/CD | 🟢 待执行 | - |
+| 09 | Web Dashboard | ✅ 已完成  | feat: task09 dashboard |
+| 10 | 集成测试 + CI/CD | ✅ 已完成 | feat: task10 integration-ci |
+| 11 | 启动架构简化 | ✅ 已完成 | feat: simplify startup - default full mode |
+| 12 | gRPC + Full锁 | ✅ 已完成 | feat: add gRPC server + full-mode lock |
 
 ## 总估时: ~20 小时
 
 ## 更新日志
+- 2026-03-27: gRPC server 完成 (AgentService/ProjectService/TaskService/EventService, token auth interceptor, 8 个 gRPC 测试全通过)
+- 2026-03-27: Full-mode uniqueness 完成 (PID lock file, stale lock cleanup, lockfile_test.go 通过)
+- 2026-03-27: 启动架构简化完成 (默认 full 模式，--connect 自动 client，统一配置文件，平级子命令)
 - 2026-03-26: task07 容灾恢复完成 (6 场景全覆盖：断线重连/Server 重启/调度者重连/token 限制/超时重置/push 失败，notify 多渠道通知，9 个单元测试全部通过，race detector 通过)
 - 2026-03-25: task06 MCP Server 完成 (MCP stdio server, MCP SSE server :3710, 9 个 MCP tools, client mcp 代理模式，单元测试全部通过，race detector 通过)
 - 2026-03-25: task05 JSON-RPC Server 完成 (HTTP Server :3711, 所有 RPC 方法，SSE 事件流，Go 客户端，CLI 命令，集成测试通过，race detector 通过)

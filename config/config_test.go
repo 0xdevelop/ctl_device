@@ -6,19 +6,135 @@ import (
 	"testing"
 )
 
-func TestDefaultServerConfig(t *testing.T) {
-	cfg := DefaultServerConfig()
-	
+func TestDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.Mode != "full" {
+		t.Errorf("Expected Mode 'full', got %s", cfg.Mode)
+	}
+	if cfg.Connect != "" {
+		t.Errorf("Expected empty Connect, got %s", cfg.Connect)
+	}
 	if cfg.Server.MCPPort != 3710 {
 		t.Errorf("Expected MCPPort 3710, got %d", cfg.Server.MCPPort)
 	}
-	
 	if cfg.Server.JSONRPCPort != 3711 {
 		t.Errorf("Expected JSONRPCPort 3711, got %d", cfg.Server.JSONRPCPort)
 	}
-	
 	if cfg.Server.DashboardPort != 3712 {
 		t.Errorf("Expected DashboardPort 3712, got %d", cfg.Server.DashboardPort)
+	}
+	if cfg.Server.GRPCPort != 3713 {
+		t.Errorf("Expected GRPCPort 3713, got %d", cfg.Server.GRPCPort)
+	}
+	if cfg.Server.Bind != "0.0.0.0" {
+		t.Errorf("Expected Bind '0.0.0.0', got %s", cfg.Server.Bind)
+	}
+	if cfg.Client.Role != "executor" {
+		t.Errorf("Expected Client.Role 'executor', got %s", cfg.Client.Role)
+	}
+	if cfg.Client.Capabilities == nil {
+		t.Error("Expected Client.Capabilities to be initialized, got nil")
+	}
+	if cfg.Notify.Channel != "none" {
+		t.Errorf("Expected Notify.Channel 'none', got %s", cfg.Notify.Channel)
+	}
+}
+
+func TestLoadConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+mode: full
+connect: ""
+server:
+  mcp_port: 3720
+  jsonrpc_port: 3721
+  dashboard_port: 3722
+  bind: "127.0.0.1"
+  token: "test-token"
+  state_dir: "` + tmpDir + `"
+client:
+  agent_id: "test-agent"
+  role: "executor"
+  capabilities: ["go"]
+notify:
+  channel: "webhook"
+  webhook_url: "https://example.com/webhook"
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Mode != "full" {
+		t.Errorf("Expected Mode 'full', got %s", cfg.Mode)
+	}
+	if cfg.Server.MCPPort != 3720 {
+		t.Errorf("Expected MCPPort 3720, got %d", cfg.Server.MCPPort)
+	}
+	if cfg.Server.JSONRPCPort != 3721 {
+		t.Errorf("Expected JSONRPCPort 3721, got %d", cfg.Server.JSONRPCPort)
+	}
+	if cfg.Server.Token != "test-token" {
+		t.Errorf("Expected Token 'test-token', got %s", cfg.Server.Token)
+	}
+	if cfg.Client.AgentID != "test-agent" {
+		t.Errorf("Expected Client.AgentID 'test-agent', got %s", cfg.Client.AgentID)
+	}
+	if cfg.Notify.Channel != "webhook" {
+		t.Errorf("Expected Notify.Channel 'webhook', got %s", cfg.Notify.Channel)
+	}
+}
+
+func TestLoadConfig_ConnectSetsClientMode(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+connect: "http://192.168.1.100:3711"
+`
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Mode != "client" {
+		t.Errorf("Expected Mode 'client' when connect is set, got %s", cfg.Mode)
+	}
+	if cfg.Connect != "http://192.168.1.100:3711" {
+		t.Errorf("Expected Connect 'http://192.168.1.100:3711', got %s", cfg.Connect)
+	}
+}
+
+func TestDefaultServerConfig(t *testing.T) {
+	cfg := DefaultServerConfig()
+
+	if cfg.Server.MCPPort != 3710 {
+		t.Errorf("Expected MCPPort 3710, got %d", cfg.Server.MCPPort)
+	}
+
+	if cfg.Server.JSONRPCPort != 3711 {
+		t.Errorf("Expected JSONRPCPort 3711, got %d", cfg.Server.JSONRPCPort)
+	}
+
+	if cfg.Server.DashboardPort != 3712 {
+		t.Errorf("Expected DashboardPort 3712, got %d", cfg.Server.DashboardPort)
+	}
+
+	if cfg.Server.GRPCPort != 3713 {
+		t.Errorf("Expected GRPCPort 3713, got %d", cfg.Server.GRPCPort)
 	}
 	
 	if cfg.Server.Bind != "0.0.0.0" {

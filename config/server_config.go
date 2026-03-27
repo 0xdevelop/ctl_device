@@ -21,6 +21,7 @@ type ServerSection struct {
 	MCPPort               int       `yaml:"mcp_port"`
 	JSONRPCPort           int       `yaml:"jsonrpc_port"`
 	DashboardPort         int       `yaml:"dashboard_port"`
+	GRPCPort              int       `yaml:"grpc_port"`
 	Bind                  string    `yaml:"bind"`
 	Token                 string    `yaml:"token"`
 	TLS                   TLSConfig `yaml:"tls"`
@@ -61,6 +62,7 @@ func DefaultServerConfig() *ServerConfig {
 			MCPPort:              3710,
 			JSONRPCPort:          3711,
 			DashboardPort:        3712,
+			GRPCPort:             3713,
 			Bind:                 "0.0.0.0",
 			Token:                "",
 			StateDir:             stateDir,
@@ -154,6 +156,6 @@ func WriteDefaultConfig(path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	header := []byte("# ctl_device configuration\n# mode: full (default) | client\n# When connect is set, mode is automatically \"client\"\n# Auto-generated. Edit as needed.\n\n")
+	header := []byte("# ctl_device configuration\n# mode: full (default) | client\n# When connect is set, mode is automatically \"client\"\n# Auto-generated. Edit as needed.\n# grpc_port: 3713\n\n")
 	return os.WriteFile(path, append(header, data...), 0644)
 }

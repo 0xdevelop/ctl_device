@@ -18,6 +18,7 @@ import (
 	"github.com/0xdevelop/ctl_device/internal/agent"
 	"github.com/0xdevelop/ctl_device/internal/client"
 	"github.com/0xdevelop/ctl_device/internal/event"
+	"github.com/0xdevelop/ctl_device/internal/fileutil"
 	"github.com/0xdevelop/ctl_device/internal/notify"
 	"github.com/0xdevelop/ctl_device/internal/project"
 	"github.com/0xdevelop/ctl_device/internal/recovery"
@@ -325,6 +326,13 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		cfg.Server.StateDir = stateDir
 	}
 
+	// Acquire full-mode lock to ensure only one full instance runs.
+	lockPath := filepath.Join(cfg.Server.StateDir, "ctl_device.lock")
+	if err := fileutil.AcquireLock(lockPath); err != nil {
+		return fmt.Errorf("%s", err)
+	}
+	defer fileutil.ReleaseLock(lockPath)
+
 	store, err := project.NewFileStore(cfg.Server.StateDir)
 	if err != nil {
 		return fmt.Errorf("failed to create file store: %w", err)
@@ -388,6 +396,15 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		eventBus,
 	)
 
+	grpcServer := server.NewGRPCServer(
+		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.GRPCPort),
+		cfg.Server.Token,
+		manager,
+		scheduler,
+		store,
+		eventBus,
+	)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -410,6 +427,7 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		jsonrpcServer.Shutdown(shutdownCtx)
 		mcpSSEServer.Shutdown(shutdownCtx)
 		dashboard.Shutdown(shutdownCtx)
+		grpcServer.Shutdown(shutdownCtx)
 	}()
 
 	fmt.Printf("Starting ctl_device server on %s:%d\n", cfg.Server.Bind, cfg.Server.JSONRPCPort)
@@ -419,6 +437,7 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 	fmt.Printf("Dashboard available at http://%s:%d\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 	fmt.Printf("State directory: %s\n", store.Dir())
 	fmt.Printf("MCP SSE server at http://%s:%d/sse\n", cfg.Server.Bind, cfg.Server.MCPPort)
+	fmt.Printf("gRPC server at %s:%d\n", cfg.Server.Bind, cfg.Server.GRPCPort)
 
 	recoveryMgr.Start(ctx)
 	go func() {
@@ -431,6 +450,12 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		fmt.Fprintf(os.Stderr, "Starting dashboard on %s:%d...\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 		if err := dashboard.Start(); err != nil && err != http.ErrServerClosed {
 			fmt.Fprintf(os.Stderr, "Dashboard failed: %v\n", err)
+		}
+	}()
+	go func() {
+		fmt.Fprintf(os.Stderr, "Starting gRPC server on %s:%d...\n", cfg.Server.Bind, cfg.Server.GRPCPort)
+		if err := grpcServer.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "gRPC server failed: %v\n", err)
 		}
 	}()
 

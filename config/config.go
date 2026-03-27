@@ -47,6 +47,7 @@ func DefaultConfig() *UnifiedConfig {
 			MCPPort:              3710,
 			JSONRPCPort:          3711,
 			DashboardPort:        3712,
+			GRPCPort:             3713,
 			Bind:                 "0.0.0.0",
 			Token:                "",
 			StateDir:             stateDir,

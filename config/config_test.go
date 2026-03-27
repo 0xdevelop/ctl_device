@@ -24,6 +24,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Server.DashboardPort != 3712 {
 		t.Errorf("Expected DashboardPort 3712, got %d", cfg.Server.DashboardPort)
 	}
+	if cfg.Server.GRPCPort != 3713 {
+		t.Errorf("Expected GRPCPort 3713, got %d", cfg.Server.GRPCPort)
+	}
 	if cfg.Server.Bind != "0.0.0.0" {
 		t.Errorf("Expected Bind '0.0.0.0', got %s", cfg.Server.Bind)
 	}
@@ -117,17 +120,21 @@ connect: "http://192.168.1.100:3711"
 
 func TestDefaultServerConfig(t *testing.T) {
 	cfg := DefaultServerConfig()
-	
+
 	if cfg.Server.MCPPort != 3710 {
 		t.Errorf("Expected MCPPort 3710, got %d", cfg.Server.MCPPort)
 	}
-	
+
 	if cfg.Server.JSONRPCPort != 3711 {
 		t.Errorf("Expected JSONRPCPort 3711, got %d", cfg.Server.JSONRPCPort)
 	}
-	
+
 	if cfg.Server.DashboardPort != 3712 {
 		t.Errorf("Expected DashboardPort 3712, got %d", cfg.Server.DashboardPort)
+	}
+
+	if cfg.Server.GRPCPort != 3713 {
+		t.Errorf("Expected GRPCPort 3713, got %d", cfg.Server.GRPCPort)
 	}
 	
 	if cfg.Server.Bind != "0.0.0.0" {

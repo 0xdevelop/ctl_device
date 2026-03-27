@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,113 +19,245 @@ import (
 	"github.com/0xdevelop/ctl_device/internal/client"
 	"github.com/0xdevelop/ctl_device/internal/event"
 	"github.com/0xdevelop/ctl_device/internal/notify"
-	"github.com/0xdevelop/ctl_device/internal/recovery"
 	"github.com/0xdevelop/ctl_device/internal/project"
+	"github.com/0xdevelop/ctl_device/internal/recovery"
 	"github.com/0xdevelop/ctl_device/internal/server"
 	"github.com/0xdevelop/ctl_device/pkg/protocol"
 )
 
 func main() {
+	var (
+		connectAddr   string
+		rootToken     string
+		configFile    string
+		jsonrpcPort   int
+		mcpPort       int
+		dashboardPort int
+		stateDir      string
+	)
+
 	rootCmd := &cobra.Command{
 		Use:   "ctl_device",
 		Short: "ctl_device - multi-agent task coordination server",
-		Long:  "ctl_device is a task coordination system for multi-agent workflows via MCP protocol.",
-	}
-
-	var jsonrpcPort int
-	var mcpPort int
-	var dashboardPort int
-	var token string
-	var stateDir string
-	var configFile string
-
-	serverCmd := &cobra.Command{
-		Use:   "server",
-		Short: "Start the coordination server",
-		Long:  "Start the ctl_device coordination server (JSON-RPC HTTP server).",
+		Long:  "ctl_device is a task coordination system for multi-agent workflows via MCP protocol.\n\nRun without arguments to start in full mode. Use --connect to run as a client.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(jsonrpcPort, mcpPort, dashboardPort, token, stateDir, configFile)
+			if connectAddr != "" {
+				return runClientMode(connectAddr, rootToken, configFile)
+			}
+			return runServer(jsonrpcPort, mcpPort, dashboardPort, rootToken, stateDir, configFile)
 		},
 	}
-	serverCmd.Flags().IntVar(&jsonrpcPort, "jsonrpc-port", 0, "JSON-RPC server port (default 3711)")
-	serverCmd.Flags().IntVar(&mcpPort, "mcp-port", 0, "MCP SSE server port (default 3710)")
-	serverCmd.Flags().IntVar(&dashboardPort, "dashboard-port", 0, "Dashboard port (default 3712)")
-	serverCmd.Flags().StringVarP(&token, "token", "t", "", "Authentication token (optional)")
-	serverCmd.Flags().StringVarP(&stateDir, "state-dir", "s", "", "State directory")
-	serverCmd.Flags().StringVarP(&configFile, "config", "c", "", "Config file path")
+	rootCmd.Flags().StringVarP(&connectAddr, "connect", "c", "", "Connect to full node address (enables client mode), e.g. http://192.168.1.100:3711")
+	rootCmd.Flags().StringVarP(&rootToken, "token", "t", "", "Authentication token")
+	rootCmd.Flags().StringVar(&configFile, "config", "", "Config file path")
+	rootCmd.Flags().IntVar(&jsonrpcPort, "jsonrpc-port", 0, "JSON-RPC server port (default 3711)")
+	rootCmd.Flags().IntVar(&mcpPort, "mcp-port", 0, "MCP SSE server port (default 3710)")
+	rootCmd.Flags().IntVar(&dashboardPort, "dashboard-port", 0, "Dashboard port (default 3712)")
+	rootCmd.Flags().StringVar(&stateDir, "state-dir", "", "State directory")
 
-	var serverURL string
-	var agentID string
-	var projectFilter string
-	var taskFile string
-	var follow bool
-
-	clientCmd := &cobra.Command{
-		Use:   "client",
-		Short: "Client commands for interacting with the server",
-		Long:  "Client commands to interact with a running ctl_device server.",
+	// --- Deprecated: server subcommand ---
+	var (
+		svrJSONRPCPort   int
+		svrMCPPort       int
+		svrDashboardPort int
+		svrToken         string
+		svrStateDir      string
+		svrConfigFile    string
+	)
+	serverCmd := &cobra.Command{
+		Use:        "server",
+		Short:      "[deprecated] Start the coordination server",
+		Long:       "Deprecated: just run 'ctl_device' directly.",
+		Deprecated: "just run 'ctl_device' directly.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runServer(svrJSONRPCPort, svrMCPPort, svrDashboardPort, svrToken, svrStateDir, svrConfigFile)
+		},
 	}
+	serverCmd.Flags().IntVar(&svrJSONRPCPort, "jsonrpc-port", 0, "JSON-RPC server port (default 3711)")
+	serverCmd.Flags().IntVar(&svrMCPPort, "mcp-port", 0, "MCP SSE server port (default 3710)")
+	serverCmd.Flags().IntVar(&svrDashboardPort, "dashboard-port", 0, "Dashboard port (default 3712)")
+	serverCmd.Flags().StringVarP(&svrToken, "token", "t", "", "Authentication token")
+	serverCmd.Flags().StringVar(&svrStateDir, "state-dir", "", "State directory")
+	serverCmd.Flags().StringVarP(&svrConfigFile, "config", "c", "", "Config file path")
 
-	var mcpServer string
-	var mcpToken string
-	var clientConfigPath string
-
-	mcpCmd := &cobra.Command{
+	// --- Top-level: mcp subcommand ---
+	var (
+		tlMCPServer string
+		tlMCPToken  string
+		tlMCPConfig string
+	)
+	tlMCPCmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Start MCP stdio client (proxy to remote JSON-RPC server)",
 		Long:  "Start MCP stdio client that proxies MCP requests to a remote JSON-RPC server.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMCPClient(mcpServer, mcpToken, clientConfigPath)
+			return runMCPClient(tlMCPServer, tlMCPToken, tlMCPConfig)
 		},
 	}
-	mcpCmd.Flags().StringVarP(&mcpServer, "server", "s", "http://localhost:3711", "Remote JSON-RPC server URL")
-	mcpCmd.Flags().StringVarP(&mcpToken, "token", "t", "", "Authentication token")
-	mcpCmd.Flags().StringVarP(&clientConfigPath, "config", "c", "", "Client config file path")
+	tlMCPCmd.Flags().StringVarP(&tlMCPServer, "server", "s", "http://localhost:3711", "Remote JSON-RPC server URL")
+	tlMCPCmd.Flags().StringVarP(&tlMCPToken, "token", "t", "", "Authentication token")
+	tlMCPCmd.Flags().StringVarP(&tlMCPConfig, "config", "c", "", "Client config file path")
 
-	statusCmd := &cobra.Command{
+	// --- Top-level: status subcommand ---
+	var (
+		tlStatusServer  string
+		tlStatusToken   string
+		tlStatusAgent   string
+		tlStatusProject string
+		tlStatusConfig  string
+	)
+	tlStatusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show project/task status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runStatus(serverURL, token, agentID, projectFilter, clientConfigPath)
+			return runStatus(tlStatusServer, tlStatusToken, tlStatusAgent, tlStatusProject, tlStatusConfig)
 		},
 	}
-	statusCmd.Flags().StringVarP(&serverURL, "server", "s", "http://localhost:3711", "Server URL")
-	statusCmd.Flags().StringVarP(&token, "token", "t", "", "Authentication token")
-	statusCmd.Flags().StringVarP(&agentID, "agent", "a", "", "Agent ID")
-	statusCmd.Flags().StringVarP(&projectFilter, "project", "p", "", "Project filter")
-	statusCmd.Flags().StringVarP(&clientConfigPath, "config", "c", "", "Client config file path")
+	tlStatusCmd.Flags().StringVarP(&tlStatusServer, "server", "s", "http://localhost:3711", "Server URL")
+	tlStatusCmd.Flags().StringVarP(&tlStatusToken, "token", "t", "", "Authentication token")
+	tlStatusCmd.Flags().StringVarP(&tlStatusAgent, "agent", "a", "", "Agent ID")
+	tlStatusCmd.Flags().StringVarP(&tlStatusProject, "project", "p", "", "Project filter")
+	tlStatusCmd.Flags().StringVarP(&tlStatusConfig, "config", "c", "", "Client config file path")
 
-	dispatchCmd := &cobra.Command{
+	// --- Top-level: dispatch subcommand ---
+	var (
+		tlDispServer  string
+		tlDispToken   string
+		tlDispAgent   string
+		tlDispProject string
+		tlDispFile    string
+		tlDispConfig  string
+	)
+	tlDispatchCmd := &cobra.Command{
 		Use:   "dispatch",
 		Short: "Dispatch a task to an agent",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDispatch(serverURL, token, agentID, projectFilter, taskFile, clientConfigPath)
+			return runDispatch(tlDispServer, tlDispToken, tlDispAgent, tlDispProject, tlDispFile, tlDispConfig)
 		},
 	}
-	dispatchCmd.Flags().StringVarP(&serverURL, "server", "s", "http://localhost:3711", "Server URL")
-	dispatchCmd.Flags().StringVarP(&token, "token", "t", "", "Authentication token")
-	dispatchCmd.Flags().StringVarP(&agentID, "agent", "a", "", "Agent ID")
-	dispatchCmd.Flags().StringVarP(&projectFilter, "project", "p", "", "Project name")
-	dispatchCmd.Flags().StringVarP(&taskFile, "task-file", "f", "", "Task file to dispatch")
-	dispatchCmd.Flags().StringVarP(&clientConfigPath, "config", "c", "", "Client config file path")
-	_ = dispatchCmd.MarkFlagRequired("project")
-	_ = dispatchCmd.MarkFlagRequired("task-file")
+	tlDispatchCmd.Flags().StringVarP(&tlDispServer, "server", "s", "http://localhost:3711", "Server URL")
+	tlDispatchCmd.Flags().StringVarP(&tlDispToken, "token", "t", "", "Authentication token")
+	tlDispatchCmd.Flags().StringVarP(&tlDispAgent, "agent", "a", "", "Agent ID")
+	tlDispatchCmd.Flags().StringVarP(&tlDispProject, "project", "p", "", "Project name")
+	tlDispatchCmd.Flags().StringVarP(&tlDispFile, "task-file", "f", "", "Task file to dispatch")
+	tlDispatchCmd.Flags().StringVarP(&tlDispConfig, "config", "c", "", "Client config file path")
+	_ = tlDispatchCmd.MarkFlagRequired("project")
+	_ = tlDispatchCmd.MarkFlagRequired("task-file")
 
-	logsCmd := &cobra.Command{
+	// --- Top-level: logs subcommand ---
+	var (
+		tlLogsServer  string
+		tlLogsToken   string
+		tlLogsProject string
+		tlLogsFollow  bool
+		tlLogsConfig  string
+	)
+	tlLogsCmd := &cobra.Command{
 		Use:   "logs",
 		Short: "Show server logs",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogs(serverURL, token, projectFilter, follow, clientConfigPath)
+			return runLogs(tlLogsServer, tlLogsToken, tlLogsProject, tlLogsFollow, tlLogsConfig)
 		},
 	}
-	logsCmd.Flags().StringVarP(&serverURL, "server", "s", "http://localhost:3711", "Server URL")
-	logsCmd.Flags().StringVarP(&token, "token", "t", "", "Authentication token")
-	logsCmd.Flags().StringVarP(&projectFilter, "project", "p", "", "Project filter")
-	logsCmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow logs (SSE)")
-	logsCmd.Flags().StringVarP(&clientConfigPath, "config", "c", "", "Client config file path")
+	tlLogsCmd.Flags().StringVarP(&tlLogsServer, "server", "s", "http://localhost:3711", "Server URL")
+	tlLogsCmd.Flags().StringVarP(&tlLogsToken, "token", "t", "", "Authentication token")
+	tlLogsCmd.Flags().StringVarP(&tlLogsProject, "project", "p", "", "Project filter")
+	tlLogsCmd.Flags().BoolVarP(&tlLogsFollow, "follow", "f", false, "Follow logs (SSE)")
+	tlLogsCmd.Flags().StringVarP(&tlLogsConfig, "config", "c", "", "Client config file path")
 
-	clientCmd.AddCommand(mcpCmd, statusCmd, dispatchCmd, logsCmd)
-	rootCmd.AddCommand(serverCmd, clientCmd)
+	// --- Deprecated: client subcommand (with sub-commands for backward compat) ---
+	var (
+		clMCPServer string
+		clMCPToken  string
+		clMCPConfig string
+	)
+	clMCPCmd := &cobra.Command{
+		Use:   "mcp",
+		Short: "Start MCP stdio client (proxy to remote JSON-RPC server)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runMCPClient(clMCPServer, clMCPToken, clMCPConfig)
+		},
+	}
+	clMCPCmd.Flags().StringVarP(&clMCPServer, "server", "s", "http://localhost:3711", "Remote JSON-RPC server URL")
+	clMCPCmd.Flags().StringVarP(&clMCPToken, "token", "t", "", "Authentication token")
+	clMCPCmd.Flags().StringVarP(&clMCPConfig, "config", "c", "", "Client config file path")
+
+	var (
+		clStatusServer  string
+		clStatusToken   string
+		clStatusAgent   string
+		clStatusProject string
+		clStatusConfig  string
+	)
+	clStatusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show project/task status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runStatus(clStatusServer, clStatusToken, clStatusAgent, clStatusProject, clStatusConfig)
+		},
+	}
+	clStatusCmd.Flags().StringVarP(&clStatusServer, "server", "s", "http://localhost:3711", "Server URL")
+	clStatusCmd.Flags().StringVarP(&clStatusToken, "token", "t", "", "Authentication token")
+	clStatusCmd.Flags().StringVarP(&clStatusAgent, "agent", "a", "", "Agent ID")
+	clStatusCmd.Flags().StringVarP(&clStatusProject, "project", "p", "", "Project filter")
+	clStatusCmd.Flags().StringVarP(&clStatusConfig, "config", "c", "", "Client config file path")
+
+	var (
+		clDispServer  string
+		clDispToken   string
+		clDispAgent   string
+		clDispProject string
+		clDispFile    string
+		clDispConfig  string
+	)
+	clDispatchCmd := &cobra.Command{
+		Use:   "dispatch",
+		Short: "Dispatch a task to an agent",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDispatch(clDispServer, clDispToken, clDispAgent, clDispProject, clDispFile, clDispConfig)
+		},
+	}
+	clDispatchCmd.Flags().StringVarP(&clDispServer, "server", "s", "http://localhost:3711", "Server URL")
+	clDispatchCmd.Flags().StringVarP(&clDispToken, "token", "t", "", "Authentication token")
+	clDispatchCmd.Flags().StringVarP(&clDispAgent, "agent", "a", "", "Agent ID")
+	clDispatchCmd.Flags().StringVarP(&clDispProject, "project", "p", "", "Project name")
+	clDispatchCmd.Flags().StringVarP(&clDispFile, "task-file", "f", "", "Task file to dispatch")
+	clDispatchCmd.Flags().StringVarP(&clDispConfig, "config", "c", "", "Client config file path")
+	_ = clDispatchCmd.MarkFlagRequired("project")
+	_ = clDispatchCmd.MarkFlagRequired("task-file")
+
+	var (
+		clLogsServer  string
+		clLogsToken   string
+		clLogsProject string
+		clLogsFollow  bool
+		clLogsConfig  string
+	)
+	clLogsCmd := &cobra.Command{
+		Use:   "logs",
+		Short: "Show server logs",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLogs(clLogsServer, clLogsToken, clLogsProject, clLogsFollow, clLogsConfig)
+		},
+	}
+	clLogsCmd.Flags().StringVarP(&clLogsServer, "server", "s", "http://localhost:3711", "Server URL")
+	clLogsCmd.Flags().StringVarP(&clLogsToken, "token", "t", "", "Authentication token")
+	clLogsCmd.Flags().StringVarP(&clLogsProject, "project", "p", "", "Project filter")
+	clLogsCmd.Flags().BoolVarP(&clLogsFollow, "follow", "f", false, "Follow logs (SSE)")
+	clLogsCmd.Flags().StringVarP(&clLogsConfig, "config", "c", "", "Client config file path")
+
+	clientCmd := &cobra.Command{
+		Use:        "client",
+		Short:      "[deprecated] Client commands",
+		Long:       "Deprecated: use 'ctl_device --connect <addr>' instead.",
+		Deprecated: "use 'ctl_device --connect <addr>' instead.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return nil
+		},
+	}
+	clientCmd.AddCommand(clMCPCmd, clStatusCmd, clDispatchCmd, clLogsCmd)
+
+	rootCmd.AddCommand(serverCmd, clientCmd, tlMCPCmd, tlStatusCmd, tlDispatchCmd, tlLogsCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -137,10 +269,8 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 	var err error
 
 	// Priority: CLI flag > env > beside-binary conf/config.yaml > default (auto-generate)
-	// 1. Resolve config file path
 	resolvedConfig := configFile
 	if resolvedConfig == "" {
-		// Look beside the binary at conf/config.yaml
 		execPath, execErr := os.Executable()
 		if execErr == nil {
 			candidate := filepath.Join(filepath.Dir(execPath), "conf", "config.yaml")
@@ -157,7 +287,6 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		}
 		fmt.Printf("Config loaded from: %s\n", resolvedConfig)
 	} else {
-		// No config found: generate default at conf/config.yaml beside the binary
 		cfg = config.DefaultServerConfig()
 		execPath, execErr := os.Executable()
 		if execErr == nil {
@@ -168,7 +297,7 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		}
 	}
 
-	// 2. Override with environment variables
+	// Override with environment variables
 	if envToken := os.Getenv("CTL_DEVICE_TOKEN"); envToken != "" {
 		cfg.Server.Token = envToken
 	}
@@ -179,7 +308,7 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		cfg.Server.StateDir = envStateDir
 	}
 
-	// 3. Override with CLI arguments (highest priority, 0 = not set)
+	// Override with CLI arguments (highest priority, 0 = not set)
 	if token != "" {
 		cfg.Server.Token = token
 	}
@@ -202,7 +331,6 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 	}
 
 	eventBus := event.NewBus()
-
 	scheduler := project.NewScheduler(store, eventBus)
 
 	registry, err := agent.NewRegistry(cfg.Server.StateDir)
@@ -238,16 +366,13 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 
 	jsonrpcServer.SubscribeToEvents()
 
-	// Notifier
 	notifier := notify.NewNotifier(cfg.Notify.Channel, cfg.Notify.Target)
 
-	// Recovery Manager（断线/重启/token限制/超时恢复）
 	recoveryMgr := recovery.NewManager(scheduler, manager, notifier, eventBus)
 	if err := recoveryMgr.OnServerStart(); err != nil {
 		fmt.Fprintf(os.Stderr, "Recovery warning: %v\n", err)
 	}
 
-	// MCP SSE Server (:3710)
 	mcpSSEServer := server.NewMCPSSEServer(
 		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.MCPPort),
 		scheduler,
@@ -293,8 +418,8 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 	}
 	fmt.Printf("Dashboard available at http://%s:%d\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 	fmt.Printf("State directory: %s\n", store.Dir())
-
 	fmt.Printf("MCP SSE server at http://%s:%d/sse\n", cfg.Server.Bind, cfg.Server.MCPPort)
+
 	recoveryMgr.Start(ctx)
 	go func() {
 		fmt.Fprintf(os.Stderr, "Starting MCP SSE on %s:%d...\n", cfg.Server.Bind, cfg.Server.MCPPort)
@@ -313,6 +438,119 @@ func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configF
 		return fmt.Errorf("server failed: %w", err)
 	}
 
+	return nil
+}
+
+func runClientMode(connectAddr, token, configFile string) error {
+	// Load unified config if available, fall back to client config
+	var agentID, role string
+	var capabilities []string
+	var serverURL, authToken string
+
+	if configFile != "" {
+		ucfg, err := config.LoadConfig(configFile)
+		if err == nil {
+			agentID = ucfg.Client.AgentID
+			role = ucfg.Client.Role
+			capabilities = ucfg.Client.Capabilities
+			serverURL = ucfg.Connect
+			authToken = ucfg.Server.Token
+		}
+	}
+
+	// CLI overrides
+	if connectAddr != "" {
+		serverURL = connectAddr
+	}
+	if token != "" {
+		authToken = token
+	}
+
+	// Fall back to legacy client config
+	if serverURL == "" {
+		cfg, err := config.LoadClientConfig(configFile)
+		if err != nil {
+			cfg = config.DefaultClientConfig()
+		}
+		config.ApplyClientConfigOverrides(cfg, connectAddr, token, "")
+		serverURL = cfg.Server
+		authToken = cfg.Token
+		if agentID == "" {
+			agentID = cfg.AgentID
+		}
+		if role == "" {
+			role = cfg.Role
+		}
+		if len(capabilities) == 0 {
+			capabilities = cfg.Capabilities
+		}
+	}
+
+	// Env overrides
+	if envServer := os.Getenv("CTL_DEVICE_SERVER"); envServer != "" {
+		serverURL = envServer
+	}
+	if envToken := os.Getenv("CTL_DEVICE_TOKEN"); envToken != "" {
+		authToken = envToken
+	}
+	if envAgent := os.Getenv("CTL_DEVICE_AGENT_ID"); envAgent != "" {
+		agentID = envAgent
+	}
+
+	if serverURL == "" {
+		return fmt.Errorf("no server address specified; use --connect <addr> or set connect in config")
+	}
+
+	// Default agent ID from hostname
+	if agentID == "" {
+		hostname, _ := os.Hostname()
+		agentID = hostname
+	}
+	if role == "" {
+		role = "executor"
+	}
+
+	c := client.NewClient(serverURL, authToken, agentID)
+
+	// Register agent with the full node
+	regResp, err := c.AgentRegister(&client.RegisterRequest{
+		AgentID:      agentID,
+		Role:         role,
+		Capabilities: capabilities,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to register with %s: %w", serverURL, err)
+	}
+
+	fmt.Printf("Connected to %s as %s (role: %s)\n", serverURL, agentID, role)
+	if regResp.PendingTasks != nil && len(regResp.PendingTasks) > 0 {
+		fmt.Printf("  Pending tasks: %d\n", len(regResp.PendingTasks))
+	}
+
+	// Start heartbeat loop
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := c.Heartbeat(agentID); err != nil {
+					fmt.Fprintf(os.Stderr, "Heartbeat failed: %v\n", err)
+				}
+			}
+		}
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	cancel()
+	fmt.Fprintln(os.Stderr, "\nClient disconnected.")
 	return nil
 }
 
@@ -378,7 +616,7 @@ func runStatus(serverURL, token, agentID, projectFilter, clientConfigPath string
 	return nil
 }
 
-func runDispatch(serverURL, token, agentID, project, taskFile, clientConfigPath string) error {
+func runDispatch(serverURL, token, agentID, projectName, taskFile, clientConfigPath string) error {
 	var cfg *config.ClientConfig
 	var err error
 
@@ -408,11 +646,11 @@ func runDispatch(serverURL, token, agentID, project, taskFile, clientConfigPath 
 		return fmt.Errorf("failed to parse task file: %w", err)
 	}
 
-	if err := c.TaskDispatch(project, task); err != nil {
+	if err := c.TaskDispatch(projectName, task); err != nil {
 		return fmt.Errorf("failed to dispatch task: %w", err)
 	}
 
-	fmt.Printf("Task dispatched to project %s\n", project)
+	fmt.Printf("Task dispatched to project %s\n", projectName)
 	return nil
 }
 

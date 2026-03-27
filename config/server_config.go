@@ -141,17 +141,19 @@ func ExpandTilde(path string) string {
 	return path
 }
 
-// WriteDefaultConfig writes the default server config to path as YAML.
+// WriteDefaultConfig writes the default unified config to path as YAML.
 // Creates parent directories as needed.
 func WriteDefaultConfig(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
-	cfg := DefaultServerConfig()
+	cfg := DefaultConfig()
+	// Use human-friendly tilde path in the generated file
+	cfg.Server.StateDir = "~/.config/ctl_device"
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	header := []byte("# ctl_device server configuration\n# Auto-generated. Edit as needed.\n\n")
+	header := []byte("# ctl_device configuration\n# mode: full (default) | client\n# When connect is set, mode is automatically \"client\"\n# Auto-generated. Edit as needed.\n\n")
 	return os.WriteFile(path, append(header, data...), 0644)
 }

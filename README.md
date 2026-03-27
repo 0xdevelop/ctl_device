@@ -4,9 +4,7 @@
 
 ## 快速开始
 
-### Server
-
-#### 下载最新版
+### 下载最新版
 
 ```bash
 # Linux (amd64)
@@ -29,68 +27,119 @@ chmod +x ctl_device
 curl -L https://github.com/0xdevelop/ctl_device/releases/latest/download/ctl_device_windows_amd64.exe -o ctl_device.exe
 ```
 
-#### 启动 Server
+### 启动 Full 模式（默认）
 
 ```bash
-# 启动（本地开发，无认证）
-./ctl_device server
+# 直接启动，默认 full 模式（JSON-RPC + MCP SSE + Dashboard 全部启动）
+./ctl_device
 
-# 生产部署（带 token）
-./ctl_device server --token your-secret --config bridge.yaml
+# 带 token
+./ctl_device --token your-secret
 
-# 指定端口和状态目录
-./ctl_device server --addr :3711 --state-dir ~/.config/ctl_device
+# 指定配置文件
+./ctl_device --config /path/to/config.yaml
+
+# 指定端口
+./ctl_device --jsonrpc-port 3711 --mcp-port 3710 --dashboard-port 3712
 ```
 
-#### 环境变量配置
+### 启动 Client 模式
+
+其他机器指向 Full 节点，自动以 Client 身份运行：
+
+```bash
+# 连接到 full 节点
+./ctl_device --connect http://192.168.1.100:3711
+
+# 带 token
+./ctl_device --connect http://your-vps.com:3711 --token your-secret
+```
+
+Client 启动后会自动注册 agent、发送心跳。
+
+### 环境变量
 
 ```bash
 export CTL_DEVICE_TOKEN=your-secret-token
-export CTL_DEVICE_ADDR=:3711
-export CTL_DEVICE_STATE_DIR=~/.config/ctl_device
-./ctl_device server
+export CTL_DEVICE_SERVER=http://192.168.1.100:3711
+export CTL_DEVICE_AGENT_ID=macbook-m4
 ```
 
-### Client（IDE 配置）
+## 统一配置文件
 
-#### Claude Code（.claude.json）
+Full 和 Client 共用同一个配置文件（`conf/config.yaml`，首次启动自动生成）：
+
+```yaml
+# mode: full (默认) | client
+# 设置 connect 后自动变 client
+mode: full
+connect: ""
+
+server:
+  bind: "0.0.0.0"
+  jsonrpc_port: 3711
+  mcp_port: 3710
+  dashboard_port: 3712
+  token: ""
+  state_dir: "~/.config/ctl_device"
+  snapshot_interval_seconds: 30
+  heartbeat_timeout_seconds: 45
+  tls:
+    enabled: false
+
+client:
+  agent_id: ""
+  role: "executor"
+  capabilities: []
+
+notify:
+  channel: "none"
+  target: ""
+
+projects: []
+```
+
+## CLI 命令
+
+```bash
+# Full 模式（默认）
+ctl_device                          # 启动 full 节点
+ctl_device --connect <addr>         # 启动 client 节点
+
+# 工具命令
+ctl_device mcp                      # MCP stdio 模式（供 IDE 配置）
+ctl_device status                   # 查询项目/任务状态
+ctl_device dispatch -p <project> -f <task.json>  # 下发任务
+ctl_device logs -f                  # 实时日志（SSE）
+
+# 向后兼容（已废弃）
+ctl_device server                   # → 等同于 ctl_device
+ctl_device client mcp               # → 等同于 ctl_device mcp
+```
+
+## IDE 配置（MCP）
+
+### Claude Code（.claude.json）
 
 ```json
 {
   "mcpServers": {
     "ctl_device": {
       "command": "/path/to/ctl_device",
-      "args": ["client", "mcp", "--server", "http://your-server:3711", "--token", "xxx"]
+      "args": ["mcp", "--server", "http://your-server:3711", "--token", "xxx"]
     }
   }
 }
 ```
 
-#### Trae CN
-
-在 Trae CN 的 MCP 配置中添加：
+### Trae CN / Cursor / JB
 
 ```json
 {
   "mcpServers": {
     "ctl_device": {
       "command": "ctl_device",
-      "args": ["client", "mcp", "--server", "http://localhost:3711"]
-    }
-  }
-}
-```
-
-#### Cursor
-
-在 Cursor 的 MCP 配置中添加：
-
-```json
-{
-  "mcpServers": {
-    "ctl_device": {
-      "command": "/path/to/ctl_device",
-      "args": ["client", "mcp", "--server", "http://localhost:3711"]
+      "args": ["mcp", "--server", "http://localhost:3711"]
     }
   }
 }
@@ -104,7 +153,7 @@ export CTL_DEVICE_STATE_DIR=~/.config/ctl_device
     "servers": {
       "ctl_device": {
         "command": "ctl_device",
-        "args": ["client", "mcp", "--server", "http://localhost:3711"]
+        "args": ["mcp", "--server", "http://localhost:3711"]
       }
     }
   }
@@ -115,8 +164,8 @@ export CTL_DEVICE_STATE_DIR=~/.config/ctl_device
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      ctl_device Server                           │
-│                  （VPS / 局域网任意一台机器）                      │
+│                    ctl_device (Full 模式)                        │
+│                 （VPS / 局域网任意一台机器）                       │
 │                                                                  │
 │  ┌─────────────┐  ┌─────────────────┐  ┌────────────────────┐  │
 │  │ MCP SSE     │  │ JSON-RPC HTTP   │  │ Web Dashboard      │  │
@@ -133,11 +182,11 @@ export CTL_DEVICE_STATE_DIR=~/.config/ctl_device
 │  持久化层：~/.config/ctl_device/ (JSON files)                    │
 └─────────────────────────────────────────────────────────────────┘
          ▲                              ▲
-         │ MCP SSE / JSON-RPC           │ MCP stdio / JSON-RPC
+         │ MCP SSE / JSON-RPC           │ --connect / MCP stdio
 ┌────────────────────┐      ┌──────────────────────────────────┐
 │  调度者             │      │  执行者（任意机器）               │
-│  OpenClaw + MCP    │      │  ctl_device client --mcp-stdio   │
-│  任何有 API 的工具  │      │  配置到 Claude Code / Cursor / JB│
+│  OpenClaw + MCP    │      │  ctl_device --connect <addr>     │
+│                    │      │  或 IDE + ctl_device mcp          │
 └────────────────────┘      └──────────────────────────────────┘
 ```
 
@@ -151,95 +200,19 @@ export CTL_DEVICE_STATE_DIR=~/.config/ctl_device
 - **Web Dashboard**：实时查看在线 Agent、项目状态、任务进度
 - **事件流**：SSE 实时推送任务状态变更
 
-## CLI 命令
-
-```bash
-# Server
-ctl_device server              # 启动 server
-ctl_device server --help       # 查看帮助
-
-# Client
-ctl_device client mcp          # MCP stdio 模式（供 IDE 配置）
-ctl_device client status       # 查询项目/任务状态
-ctl_device client dispatch     # 下发任务
-ctl_device client logs         # 实时日志（SSE）
-```
-
-## 配置
-
-### Server 配置（~/.config/ctl_device/server.yaml）
-
-```yaml
-server:
-  bind: "0.0.0.0"
-  jsonrpc_port: 3711
-  dashboard_port: 3712
-  token: "your-secret-token"  # 可选
-  state_dir: "~/.config/ctl_device"
-  tls:
-    enabled: false
-    cert_file: ""
-    key_file: ""
-    auto_tls: false
-    domain: ""
-```
-
-### Client 配置（~/.config/ctl_device/client.yaml）
-
-```yaml
-server: "http://localhost:3711"
-token: "your-secret-token"  # 可选
-agent_id: "macbook-m4"      # 唯一标识
-role: "executor"             # scheduler / executor / both
-capabilities: ["go", "python"]
-```
-
 ## 开发
-
-### 构建
 
 ```bash
 go build ./...
-```
-
-### 测试
-
-```bash
 go test -race -timeout 5m ./...
+go run ./cmd/ctl_device
 ```
 
-### 运行
+## 发版
 
 ```bash
-go run ./cmd/ctl_device server
-```
-
-## 协议
-
-### MCP Tools
-
-#### 执行者工具
-- `task_get` - 拉取当前任务
-- `task_status` - 更新执行状态
-- `task_complete` - 提交完成报告（含 commit hash）
-- `task_block` - 报告阻塞
-
-#### 调度者工具
-- `project_register` - 注册新项目
-- `project_list` - 列出所有项目及状态
-- `task_dispatch` - 下发任务
-- `task_advance` - 验证完成，推进下一任务
-- `agent_list` - 列出在线 executor
-- `subscribe` - 订阅项目事件（SSE）
-
-### JSON-RPC 方法
-
-```
-bridge.task.get / status / complete / block
-bridge.project.register / list
-bridge.task.dispatch / advance
-bridge.agent.register / list / heartbeat
-bridge.event.subscribe
+./git_tag.sh       # 自动递增版本号，生成 changelog，push + tag
+./git_tag.sh custom  # 手动指定版本号
 ```
 
 ## 许可证

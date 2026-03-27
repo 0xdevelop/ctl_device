@@ -1,0 +1,196 @@
+syntax = "proto3";
+package ctldevice;
+option go_package = "github.com/0xdevelop/ctl_device/api/pb";
+
+// Agent service
+service AgentService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+}
+
+// Project service
+service ProjectService {
+  rpc Register(ProjectRegisterRequest) returns (ProjectRegisterResponse);
+  rpc List(ProjectListRequest) returns (ProjectListResponse);
+}
+
+// Task service
+service TaskService {
+  rpc Get(TaskGetRequest) returns (TaskGetResponse);
+  rpc UpdateStatus(TaskStatusRequest) returns (TaskStatusResponse);
+  rpc Complete(TaskCompleteRequest) returns (TaskCompleteResponse);
+  rpc Block(TaskBlockRequest) returns (TaskBlockResponse);
+  rpc Dispatch(TaskDispatchRequest) returns (TaskDispatchResponse);
+  rpc Advance(TaskAdvanceRequest) returns (TaskAdvanceResponse);
+}
+
+// Event service
+service EventService {
+  rpc Subscribe(SubscribeRequest) returns (stream EventResponse);
+}
+
+// --- Messages ---
+
+message RegisterRequest {
+  string agent_id = 1;
+  string role = 2;
+  repeated string capabilities = 3;
+  repeated string projects = 4;
+  bool resume = 5;
+}
+
+message RegisterResponse {
+  bool ok = 1;
+  repeated Task pending_tasks = 2;
+}
+
+message HeartbeatRequest {
+  string agent_id = 1;
+}
+
+message HeartbeatResponse {
+  string status = 1;
+}
+
+message ListAgentsRequest {}
+
+message ListAgentsResponse {
+  repeated Agent agents = 1;
+}
+
+message Agent {
+  string id = 1;
+  string role = 2;
+  repeated string capabilities = 3;
+  string last_heartbeat = 4;
+  bool online = 5;
+  string current_task = 6;
+}
+
+message ProjectRegisterRequest {
+  string name = 1;
+  string dir = 2;
+  string tech = 3;
+  string test_cmd = 4;
+  string executor = 5;
+  int32 timeout_minutes = 6;
+  string notify_channel = 7;
+  string notify_target = 8;
+}
+
+message ProjectRegisterResponse {
+  string status = 1;
+}
+
+message ProjectListRequest {}
+
+message ProjectListResponse {
+  repeated Project projects = 1;
+  map<string, TaskList> tasks = 2;
+}
+
+message Project {
+  string name = 1;
+  string dir = 2;
+  string tech = 3;
+  string test_cmd = 4;
+  string executor = 5;
+  int32 timeout_minutes = 6;
+  string notify_channel = 7;
+  string notify_target = 8;
+}
+
+message TaskList {
+  repeated Task tasks = 1;
+}
+
+message Task {
+  string id = 1;
+  string project = 2;
+  string num = 3;
+  string name = 4;
+  string description = 5;
+  repeated string acceptance_criteria = 6;
+  repeated string context_files = 7;
+  string status = 8;
+  string assigned_to = 9;
+  string started_at = 10;
+  string updated_at = 11;
+  string commit = 12;
+  string report = 13;
+  int32 timeout_minutes = 14;
+}
+
+message TaskGetRequest {
+  string project = 1;
+}
+
+message TaskGetResponse {
+  string status = 1;
+  Task task = 2;
+}
+
+message TaskStatusRequest {
+  string project = 1;
+  string task_num = 2;
+  string status = 3;
+}
+
+message TaskStatusResponse {
+  string status = 1;
+}
+
+message TaskCompleteRequest {
+  string project = 1;
+  string task_num = 2;
+  string summary = 3;
+  string commit = 4;
+  string test_output = 5;
+  string issues = 6;
+}
+
+message TaskCompleteResponse {
+  string status = 1;
+}
+
+message TaskBlockRequest {
+  string project = 1;
+  string task_num = 2;
+  string reason = 3;
+  string details = 4;
+}
+
+message TaskBlockResponse {
+  string status = 1;
+}
+
+message TaskDispatchRequest {
+  string project = 1;
+  Task task = 2;
+}
+
+message TaskDispatchResponse {
+  string status = 1;
+}
+
+message TaskAdvanceRequest {
+  string project = 1;
+}
+
+message TaskAdvanceResponse {
+  string status = 1;
+}
+
+message SubscribeRequest {
+  string project = 1;
+}
+
+message EventResponse {
+  string type = 1;
+  string project = 2;
+  string agent_id = 3;
+  string task_id = 4;
+  string payload = 5;
+  string timestamp = 6;
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"os/signal"
 	"syscall"
 	"time"
@@ -17,6 +18,8 @@ import (
 	"github.com/0xdevelop/ctl_device/internal/agent"
 	"github.com/0xdevelop/ctl_device/internal/client"
 	"github.com/0xdevelop/ctl_device/internal/event"
+	"github.com/0xdevelop/ctl_device/internal/notify"
+	"github.com/0xdevelop/ctl_device/internal/recovery"
 	"github.com/0xdevelop/ctl_device/internal/project"
 	"github.com/0xdevelop/ctl_device/internal/server"
 	"github.com/0xdevelop/ctl_device/pkg/protocol"
@@ -29,7 +32,9 @@ func main() {
 		Long:  "ctl_device is a task coordination system for multi-agent workflows via MCP protocol.",
 	}
 
-	var addr string
+	var jsonrpcPort int
+	var mcpPort int
+	var dashboardPort int
 	var token string
 	var stateDir string
 	var configFile string
@@ -39,10 +44,12 @@ func main() {
 		Short: "Start the coordination server",
 		Long:  "Start the ctl_device coordination server (JSON-RPC HTTP server).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(addr, token, stateDir, configFile)
+			return runServer(jsonrpcPort, mcpPort, dashboardPort, token, stateDir, configFile)
 		},
 	}
-	serverCmd.Flags().StringVarP(&addr, "addr", "a", ":3711", "Server address")
+	serverCmd.Flags().IntVar(&jsonrpcPort, "jsonrpc-port", 0, "JSON-RPC server port (default 3711)")
+	serverCmd.Flags().IntVar(&mcpPort, "mcp-port", 0, "MCP SSE server port (default 3710)")
+	serverCmd.Flags().IntVar(&dashboardPort, "dashboard-port", 0, "Dashboard port (default 3712)")
 	serverCmd.Flags().StringVarP(&token, "token", "t", "", "Authentication token (optional)")
 	serverCmd.Flags().StringVarP(&stateDir, "state-dir", "s", "", "State directory")
 	serverCmd.Flags().StringVarP(&configFile, "config", "c", "", "Config file path")
@@ -125,19 +132,40 @@ func main() {
 	}
 }
 
-func runServer(addr, token, stateDir, configFile string) error {
+func runServer(jsonrpcPort, mcpPort, dashboardPort int, token, stateDir, configFile string) error {
 	var cfg *config.ServerConfig
 	var err error
 
-	// Priority: CLI > env > config > default
-	// 1. Load from config file or default
-	if configFile != "" {
-		cfg, err = config.LoadServerConfig(configFile)
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
+	// Priority: CLI flag > env > beside-binary conf/config.yaml > default (auto-generate)
+	// 1. Resolve config file path
+	resolvedConfig := configFile
+	if resolvedConfig == "" {
+		// Look beside the binary at conf/config.yaml
+		execPath, execErr := os.Executable()
+		if execErr == nil {
+			candidate := filepath.Join(filepath.Dir(execPath), "conf", "config.yaml")
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				resolvedConfig = candidate
+			}
 		}
+	}
+
+	if resolvedConfig != "" {
+		cfg, err = config.LoadServerConfig(resolvedConfig)
+		if err != nil {
+			return fmt.Errorf("failed to load config %s: %w", resolvedConfig, err)
+		}
+		fmt.Printf("Config loaded from: %s\n", resolvedConfig)
 	} else {
+		// No config found: generate default at conf/config.yaml beside the binary
 		cfg = config.DefaultServerConfig()
+		execPath, execErr := os.Executable()
+		if execErr == nil {
+			defaultPath := filepath.Join(filepath.Dir(execPath), "conf", "config.yaml")
+			if writeErr := config.WriteDefaultConfig(defaultPath); writeErr == nil {
+				fmt.Printf("Default config generated: %s\n", defaultPath)
+			}
+		}
 	}
 
 	// 2. Override with environment variables
@@ -151,15 +179,19 @@ func runServer(addr, token, stateDir, configFile string) error {
 		cfg.Server.StateDir = envStateDir
 	}
 
-	// 3. Override with CLI arguments (highest priority)
+	// 3. Override with CLI arguments (highest priority, 0 = not set)
 	if token != "" {
 		cfg.Server.Token = token
 	}
-
-	if addr != ":3711" {
-		cfg.Server.Bind = addr
+	if jsonrpcPort != 0 {
+		cfg.Server.JSONRPCPort = jsonrpcPort
 	}
-
+	if mcpPort != 0 {
+		cfg.Server.MCPPort = mcpPort
+	}
+	if dashboardPort != 0 {
+		cfg.Server.DashboardPort = dashboardPort
+	}
 	if stateDir != "" {
 		cfg.Server.StateDir = stateDir
 	}
@@ -206,6 +238,24 @@ func runServer(addr, token, stateDir, configFile string) error {
 
 	jsonrpcServer.SubscribeToEvents()
 
+	// Notifier
+	notifier := notify.NewNotifier(cfg.Notify.Channel, cfg.Notify.Target)
+
+	// Recovery Manager（断线/重启/token限制/超时恢复）
+	recoveryMgr := recovery.NewManager(scheduler, manager, notifier, eventBus)
+	if err := recoveryMgr.OnServerStart(); err != nil {
+		fmt.Fprintf(os.Stderr, "Recovery warning: %v\n", err)
+	}
+
+	// MCP SSE Server (:3710)
+	mcpSSEServer := server.NewMCPSSEServer(
+		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.MCPPort),
+		scheduler,
+		manager,
+		store,
+		eventBus,
+	)
+
 	dashboard := server.NewDashboard(
 		fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.DashboardPort),
 		manager,
@@ -233,6 +283,7 @@ func runServer(addr, token, stateDir, configFile string) error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		jsonrpcServer.Shutdown(shutdownCtx)
+		mcpSSEServer.Shutdown(shutdownCtx)
 		dashboard.Shutdown(shutdownCtx)
 	}()
 
@@ -243,6 +294,14 @@ func runServer(addr, token, stateDir, configFile string) error {
 	fmt.Printf("Dashboard available at http://%s:%d\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 	fmt.Printf("State directory: %s\n", store.Dir())
 
+	fmt.Printf("MCP SSE server at http://%s:%d/sse\n", cfg.Server.Bind, cfg.Server.MCPPort)
+	recoveryMgr.Start(ctx)
+	go func() {
+		fmt.Fprintf(os.Stderr, "Starting MCP SSE on %s:%d...\n", cfg.Server.Bind, cfg.Server.MCPPort)
+		if err := mcpSSEServer.Start(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "MCP SSE failed: %v\n", err)
+		}
+	}()
 	go func() {
 		fmt.Fprintf(os.Stderr, "Starting dashboard on %s:%d...\n", cfg.Server.Bind, cfg.Server.DashboardPort)
 		if err := dashboard.Start(); err != nil && err != http.ErrServerClosed {

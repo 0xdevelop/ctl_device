@@ -140,3 +140,18 @@ func ExpandTilde(path string) string {
 	}
 	return path
 }
+
+// WriteDefaultConfig writes the default server config to path as YAML.
+// Creates parent directories as needed.
+func WriteDefaultConfig(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	cfg := DefaultServerConfig()
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	header := []byte("# ctl_device server configuration\n# Auto-generated. Edit as needed.\n\n")
+	return os.WriteFile(path, append(header, data...), 0644)
+}
